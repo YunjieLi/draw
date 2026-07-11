@@ -9,15 +9,20 @@ The landing page presents a gallery of drawing modes (placeholders for now):
 - **Repetitive Tiles** — draw once, repeat across a seamless grid.
 - **Mirror** — reflect every line across an axis for instant balance.
 
-## Run locally
+## Stack
 
-Just open `index.html` in a browser, or serve the folder:
+- [Vite](https://vitejs.dev/) + React + TypeScript
+- [Tailwind CSS](https://tailwindcss.com/) with [shadcn/ui](https://ui.shadcn.com/) components (light, minimalist theme)
+
+## Develop
 
 ```bash
-python3 -m http.server 8000
-# then visit http://localhost:8000
+npm install
+npm run dev      # start the dev server
+npm run build    # typecheck + production build to dist/
+npm run preview  # preview the production build
 ```
 
 ## Status
 
-Early scaffolding. Each mode links back to the landing page until it's built.
+Early scaffolding. Each mode card is a placeholder that links back to the landing page until it's built.

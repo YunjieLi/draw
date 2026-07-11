@@ -1,76 +1,12 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Draw · Symmetry Studio</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="stylesheet" href="style.css" />
-</head>
-<body>
-  <header class="hero">
-    <h1 class="logo">Draw</h1>
-    <p class="tagline">A playground for symmetry, pattern, and freeform sketching.</p>
-  </header>
-
-  <main>
-    <section class="gallery" aria-label="Drawing modes">
-      <a class="mode-card" href="#" data-mode="free-form">
-        <div class="thumb thumb-freeform" aria-hidden="true">
-          <svg viewBox="0 0 120 120" role="img">
-            <path d="M15,90 C30,40 50,95 65,55 S100,30 108,75" />
-          </svg>
-        </div>
-        <h2>Free Form</h2>
-        <p>Just you and the canvas. Draw anything, no rules.</p>
-        <span class="badge">Coming soon</span>
-      </a>
-
-      <a class="mode-card" href="#" data-mode="mandala">
-        <div class="thumb thumb-mandala" aria-hidden="true">
-          <svg viewBox="0 0 120 120" role="img">
-            <g transform="translate(60,60)">
-              <g class="petals">
-                <path d="M0,0 C10,-25 -10,-25 0,-48" />
-              </g>
-            </g>
-          </svg>
-        </div>
-        <h2>Mandala</h2>
-        <p>Radial symmetry — every stroke blooms around the center.</p>
-        <span class="badge">Coming soon</span>
-      </a>
-
-      <a class="mode-card" href="#" data-mode="repetitive-tiles">
-        <div class="thumb thumb-tiles" aria-hidden="true">
-          <svg viewBox="0 0 120 120" role="img">
-            <g class="tile-grid"></g>
-          </svg>
-        </div>
-        <h2>Repetitive Tiles</h2>
-        <p>Draw once, repeat across a seamless grid of tiles.</p>
-        <span class="badge">Coming soon</span>
-      </a>
-
-      <a class="mode-card" href="#" data-mode="mirror">
-        <div class="thumb thumb-mirror" aria-hidden="true">
-          <svg viewBox="0 0 120 120" role="img">
-            <line x1="60" y1="8" x2="60" y2="112" class="axis" />
-            <path d="M60,90 C42,60 54,35 40,20" />
-            <path d="M60,90 C78,60 66,35 80,20" />
-          </svg>
-        </div>
-        <h2>Mirror</h2>
-        <p>Reflect every line across an axis for instant balance.</p>
-        <span class="badge">Coming soon</span>
-      </a>
-    </section>
-  </main>
-
-  <footer>
-    <p>Made for the joy of drawing · <a href="https://github.com/YunjieLi/draw">source</a></p>
-  </footer>
-
-  <script src="script.js"></script>
-</body>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Draw · Symmetry Studio</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
 </html>
