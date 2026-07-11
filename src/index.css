@@ -31,9 +31,20 @@
   * {
     @apply border-border;
   }
+  html,
+  body {
+    /* Kid-proofing: no pull-to-refresh / rubber-band, no long-press callout. */
+    overscroll-behavior: none;
+    -webkit-touch-callout: none;
+  }
   body {
     @apply bg-background text-foreground antialiased;
     font-feature-settings: "cv11", "ss01";
     -webkit-font-smoothing: antialiased;
+  }
+  /* Prevent accidental text/emoji selection while dragging on the canvas UI. */
+  canvas {
+    -webkit-user-select: none;
+    user-select: none;
   }
 }

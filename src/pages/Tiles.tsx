@@ -18,13 +18,9 @@ const COLORS = [
 ]
 
 // Fixed drawing parameters.
-const MIRROR = false
+const GRID = 4
 
-const SECTOR_CHOICES = [5, 6, 8]
-const randomSectors = () =>
-  SECTOR_CHOICES[Math.floor(Math.random() * SECTOR_CHOICES.length)]
-
-export default function Mandala() {
+export default function Tiles() {
   const containerRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const ctxRef = useRef<CanvasRenderingContext2D | null>(null)
@@ -33,18 +29,15 @@ export default function Mandala() {
   const lastRef = useRef<Point | null>(null)
   const activePointerRef = useRef<number | null>(null)
   const colorRef = useRef(COLORS[0])
-  const sectorsRef = useRef(SECTOR_CHOICES[0])
   const strokeRef = useStrokeWidth()
 
   const [color, setColor] = useState(COLORS[0])
   const [side, setSide] = useState(0)
   const [size, setSize] = useState({ w: 0, h: 0 })
-  const [sectors, setSectors] = useState(randomSectors)
 
   colorRef.current = color
-  sectorsRef.current = sectors
 
-  // Fit the circular canvas to the largest square inside its container.
+  // Fit the square canvas to the largest square inside its container.
   useEffect(() => {
     const el = containerRef.current
     if (!el) return
@@ -95,41 +88,30 @@ export default function Mandala() {
     setSize({ w: rect.width, h: rect.height })
   }, [side])
 
-  // Draw one segment, replicated around the center with dihedral symmetry.
+  // Draw one segment, replicated into every tile of the grid. The stroke
+  // wraps toroidally so the pattern stays seamless across tile edges.
   function stamp(a: Point, b: Point) {
     const ctx = ctxRef.current
     if (!ctx) return
     const { w, h } = sizeRef.current
-    const cx = w / 2
-    const cy = h / 2
+    const cw = w / GRID
+    const ch = h / GRID
 
     ctx.strokeStyle = colorRef.current
     ctx.lineWidth = strokeRef.current
 
-    const sectors = sectorsRef.current
-    const step = (Math.PI * 2) / sectors
-    for (let i = 0; i < sectors; i++) {
-      const angle = step * i
+    // Local coordinates within a single tile, taken from the base point.
+    const baseCol = Math.floor(a.x / cw)
+    const baseRow = Math.floor(a.y / ch)
 
-      ctx.save()
-      ctx.translate(cx, cy)
-      ctx.rotate(angle)
-      ctx.beginPath()
-      ctx.moveTo(a.x - cx, a.y - cy)
-      ctx.lineTo(b.x - cx, b.y - cy)
-      ctx.stroke()
-      ctx.restore()
-
-      if (MIRROR) {
-        ctx.save()
-        ctx.translate(cx, cy)
-        ctx.rotate(angle)
-        ctx.scale(-1, 1)
+    for (let row = 0; row < GRID; row++) {
+      for (let col = 0; col < GRID; col++) {
+        const dx = (col - baseCol) * cw
+        const dy = (row - baseRow) * ch
         ctx.beginPath()
-        ctx.moveTo(a.x - cx, a.y - cy)
-        ctx.lineTo(b.x - cx, b.y - cy)
+        ctx.moveTo(a.x + dx, a.y + dy)
+        ctx.lineTo(b.x + dx, b.y + dy)
         ctx.stroke()
-        ctx.restore()
       }
     }
   }
@@ -173,18 +155,16 @@ export default function Mandala() {
     ctx.setTransform(1, 0, 0, 1, 0, 0)
     ctx.clearRect(0, 0, canvas.width, canvas.height)
     ctx.restore()
-    setSectors(randomSectors())
   }
 
-  // Guide spokes marking each sector boundary.
-  const guides: Array<{ x2: number; y2: number }> = []
+  // Guide lines marking each tile boundary.
+  const lines: Array<{ x1: number; y1: number; x2: number; y2: number }> = []
   if (size.w > 0) {
-    const cx = size.w / 2
-    const cy = size.h / 2
-    const r = size.w / 2
-    for (let i = 0; i < sectors; i++) {
-      const angle = -Math.PI / 2 + (Math.PI * 2 * i) / sectors
-      guides.push({ x2: cx + r * Math.cos(angle), y2: cy + r * Math.sin(angle) })
+    const cw = size.w / GRID
+    const ch = size.h / GRID
+    for (let i = 1; i < GRID; i++) {
+      lines.push({ x1: i * cw, y1: 0, x2: i * cw, y2: size.h })
+      lines.push({ x1: 0, y1: i * ch, x2: size.w, y2: i * ch })
     }
   }
 
@@ -199,7 +179,7 @@ export default function Mandala() {
             </Button>
           </a>
           <span className="text-base font-semibold tracking-tight sm:text-lg">
-            Mandala
+            Tiles
           </span>
         </div>
 
@@ -235,13 +215,13 @@ export default function Mandala() {
         </div>
       </header>
 
-      {/* Circular canvas */}
+      {/* Tiled canvas */}
       <main
         ref={containerRef}
         className="flex min-h-0 flex-1 items-center justify-center p-6 sm:p-10 lg:p-12"
       >
         <div
-          className="relative overflow-hidden rounded-full border bg-white shadow-sm"
+          className="relative overflow-hidden rounded-lg border bg-white shadow-sm"
           style={{ width: side || undefined, height: side || undefined }}
         >
           <canvas
@@ -258,13 +238,13 @@ export default function Mandala() {
             width={size.w}
             height={size.h}
           >
-            {guides.map((g, i) => (
+            {lines.map((l, i) => (
               <line
                 key={i}
-                x1={size.w / 2}
-                y1={size.h / 2}
-                x2={g.x2}
-                y2={g.y2}
+                x1={l.x1}
+                y1={l.y1}
+                x2={l.x2}
+                y2={l.y2}
                 className="stroke-zinc-900/[0.06]"
                 strokeWidth={1}
               />

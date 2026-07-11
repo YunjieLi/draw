@@ -17,14 +17,7 @@ const COLORS = [
   "#ec4899",
 ]
 
-// Fixed drawing parameters.
-const MIRROR = false
-
-const SECTOR_CHOICES = [5, 6, 8]
-const randomSectors = () =>
-  SECTOR_CHOICES[Math.floor(Math.random() * SECTOR_CHOICES.length)]
-
-export default function Mandala() {
+export default function Mirror() {
   const containerRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const ctxRef = useRef<CanvasRenderingContext2D | null>(null)
@@ -33,18 +26,15 @@ export default function Mandala() {
   const lastRef = useRef<Point | null>(null)
   const activePointerRef = useRef<number | null>(null)
   const colorRef = useRef(COLORS[0])
-  const sectorsRef = useRef(SECTOR_CHOICES[0])
   const strokeRef = useStrokeWidth()
 
   const [color, setColor] = useState(COLORS[0])
   const [side, setSide] = useState(0)
   const [size, setSize] = useState({ w: 0, h: 0 })
-  const [sectors, setSectors] = useState(randomSectors)
 
   colorRef.current = color
-  sectorsRef.current = sectors
 
-  // Fit the circular canvas to the largest square inside its container.
+  // Fit the square canvas to the largest square inside its container.
   useEffect(() => {
     const el = containerRef.current
     if (!el) return
@@ -95,43 +85,26 @@ export default function Mandala() {
     setSize({ w: rect.width, h: rect.height })
   }, [side])
 
-  // Draw one segment, replicated around the center with dihedral symmetry.
+  // Draw one segment, reflected across the vertical center axis.
   function stamp(a: Point, b: Point) {
     const ctx = ctxRef.current
     if (!ctx) return
-    const { w, h } = sizeRef.current
-    const cx = w / 2
-    const cy = h / 2
+    const { w } = sizeRef.current
 
     ctx.strokeStyle = colorRef.current
     ctx.lineWidth = strokeRef.current
 
-    const sectors = sectorsRef.current
-    const step = (Math.PI * 2) / sectors
-    for (let i = 0; i < sectors; i++) {
-      const angle = step * i
+    // Original stroke.
+    ctx.beginPath()
+    ctx.moveTo(a.x, a.y)
+    ctx.lineTo(b.x, b.y)
+    ctx.stroke()
 
-      ctx.save()
-      ctx.translate(cx, cy)
-      ctx.rotate(angle)
-      ctx.beginPath()
-      ctx.moveTo(a.x - cx, a.y - cy)
-      ctx.lineTo(b.x - cx, b.y - cy)
-      ctx.stroke()
-      ctx.restore()
-
-      if (MIRROR) {
-        ctx.save()
-        ctx.translate(cx, cy)
-        ctx.rotate(angle)
-        ctx.scale(-1, 1)
-        ctx.beginPath()
-        ctx.moveTo(a.x - cx, a.y - cy)
-        ctx.lineTo(b.x - cx, b.y - cy)
-        ctx.stroke()
-        ctx.restore()
-      }
-    }
+    // Reflection across the vertical center axis.
+    ctx.beginPath()
+    ctx.moveTo(w - a.x, a.y)
+    ctx.lineTo(w - b.x, b.y)
+    ctx.stroke()
   }
 
   function pointFromEvent(e: React.PointerEvent<HTMLCanvasElement>): Point {
@@ -173,19 +146,6 @@ export default function Mandala() {
     ctx.setTransform(1, 0, 0, 1, 0, 0)
     ctx.clearRect(0, 0, canvas.width, canvas.height)
     ctx.restore()
-    setSectors(randomSectors())
-  }
-
-  // Guide spokes marking each sector boundary.
-  const guides: Array<{ x2: number; y2: number }> = []
-  if (size.w > 0) {
-    const cx = size.w / 2
-    const cy = size.h / 2
-    const r = size.w / 2
-    for (let i = 0; i < sectors; i++) {
-      const angle = -Math.PI / 2 + (Math.PI * 2 * i) / sectors
-      guides.push({ x2: cx + r * Math.cos(angle), y2: cy + r * Math.sin(angle) })
-    }
   }
 
   return (
@@ -199,7 +159,7 @@ export default function Mandala() {
             </Button>
           </a>
           <span className="text-base font-semibold tracking-tight sm:text-lg">
-            Mandala
+            Mirror
           </span>
         </div>
 
@@ -235,13 +195,13 @@ export default function Mandala() {
         </div>
       </header>
 
-      {/* Circular canvas */}
+      {/* Mirrored canvas */}
       <main
         ref={containerRef}
         className="flex min-h-0 flex-1 items-center justify-center p-6 sm:p-10 lg:p-12"
       >
         <div
-          className="relative overflow-hidden rounded-full border bg-white shadow-sm"
+          className="relative overflow-hidden rounded-lg border bg-white shadow-sm"
           style={{ width: side || undefined, height: side || undefined }}
         >
           <canvas
@@ -258,17 +218,14 @@ export default function Mandala() {
             width={size.w}
             height={size.h}
           >
-            {guides.map((g, i) => (
-              <line
-                key={i}
-                x1={size.w / 2}
-                y1={size.h / 2}
-                x2={g.x2}
-                y2={g.y2}
-                className="stroke-zinc-900/[0.06]"
-                strokeWidth={1}
-              />
-            ))}
+            <line
+              x1={size.w / 2}
+              y1={0}
+              x2={size.w / 2}
+              y2={size.h}
+              className="stroke-zinc-900/[0.06]"
+              strokeWidth={1}
+            />
           </svg>
         </div>
       </main>

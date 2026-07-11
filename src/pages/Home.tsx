@@ -18,10 +18,10 @@ type Mode = {
 }
 
 const modes: Mode[] = [
-  { id: "free-form", title: "Free form", href: "#", ready: false, Preview: FreeFormPreview },
+  { id: "free-form", title: "Free form", href: "#/free-form", ready: true, Preview: FreeFormPreview },
   { id: "mandala", title: "Mandala", href: "#/mandala", ready: true, Preview: MandalaPreview },
-  { id: "repetitive-tiles", title: "Tiles", href: "#", ready: false, Preview: TilesPreview },
-  { id: "mirror", title: "Mirror", href: "#", ready: false, Preview: MirrorPreview },
+  { id: "repetitive-tiles", title: "Tiles", href: "#/tiles", ready: true, Preview: TilesPreview },
+  { id: "mirror", title: "Mirror", href: "#/mirror", ready: true, Preview: MirrorPreview },
 ]
 
 export default function Home() {
