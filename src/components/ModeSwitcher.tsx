@@ -46,7 +46,8 @@ export function ModeSwitcher({ current }: { current: DrawingMode }) {
         aria-expanded={open}
         className="gap-2 px-2 sm:px-2.5"
       >
-        <active.Preview className="h-5 w-5 text-foreground" />
+        {/* !size overrides the Button's [&_svg]:size-4 (which wins by specificity). */}
+        <active.Preview className="!h-7 !w-7 text-foreground sm:!h-8 sm:!w-8" />
         <span className="text-base font-semibold tracking-tight sm:text-lg">
           {active.label}
         </span>

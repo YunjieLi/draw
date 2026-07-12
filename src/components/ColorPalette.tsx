@@ -50,9 +50,9 @@ export function ColorPalette({ value, onChange }: Props) {
   return (
     <div
       className={cn(
-        "flex shrink-0 items-center justify-center gap-3 border-t bg-background p-3",
+        "flex shrink-0 items-center justify-center gap-3 p-2",
         // Landscape: move to the left as a full-height vertical column.
-        "landscape:order-first landscape:flex-col landscape:border-r landscape:border-t-0"
+        "landscape:order-first landscape:flex-col"
       )}
     >
       <div ref={menuRef} className="relative">

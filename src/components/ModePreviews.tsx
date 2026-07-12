@@ -62,8 +62,6 @@ export function MirrorPreview({ className }: PreviewProps) {
   // Mirror mode does to every stroke.
   const half = (
     <>
-      {/* Antenna */}
-      <path d="M60,44 C53,34 47,31 43,31" {...strokeProps} />
       {/* Upper wing */}
       <path d="M60,52 C42,28 18,34 22,54 C25,68 46,64 60,58" {...strokeProps} />
       {/* Lower wing */}
@@ -72,17 +70,6 @@ export function MirrorPreview({ className }: PreviewProps) {
   )
   return (
     <svg viewBox="0 0 120 120" className={className} role="img">
-      {/* Body doubles as the mirror axis. */}
-      <line
-        x1="60"
-        y1="44"
-        x2="60"
-        y2="82"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth={4}
-        strokeLinecap="round"
-      />
       {half}
       <g transform="translate(120,0) scale(-1,1)">{half}</g>
     </svg>
