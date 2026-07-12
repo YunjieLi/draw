@@ -30,21 +30,29 @@
 @layer base {
   * {
     @apply border-border;
+    /* Kid-proofing: disable the long-press callout menu everywhere, and remove
+       the tap-highlight flash on touch. */
+    -webkit-touch-callout: none;
+    -webkit-tap-highlight-color: transparent;
   }
   html,
   body {
-    /* Kid-proofing: no pull-to-refresh / rubber-band, no long-press callout. */
+    /* No pull-to-refresh / rubber-band, and no long-press text selection. */
     overscroll-behavior: none;
     -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  /* Keep real inputs usable (selection + entry). */
+  input,
+  textarea,
+  [contenteditable="true"] {
+    -webkit-user-select: text;
+    user-select: text;
   }
   body {
     @apply bg-background text-foreground antialiased;
     font-feature-settings: "cv11", "ss01";
     -webkit-font-smoothing: antialiased;
-  }
-  /* Prevent accidental text/emoji selection while dragging on the canvas UI. */
-  canvas {
-    -webkit-user-select: none;
-    user-select: none;
   }
 }

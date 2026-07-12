@@ -72,7 +72,7 @@ export function ColorPalette({ value, onChange }: Props) {
           <div
             role="listbox"
             className={cn(
-              "absolute z-20 max-h-[min(60vh,22rem)] w-56 overflow-y-auto rounded-lg border bg-popover p-1 shadow-lg",
+              "absolute z-20 max-h-[min(60vh,22rem)] w-60 overflow-y-auto rounded-lg border bg-card p-1 shadow-lg",
               // Portrait (bar at bottom): open upward, aligned to the left edge.
               "bottom-full left-0 mb-2",
               // Landscape (bar on the left): open to the right, aligned to top.
@@ -94,11 +94,11 @@ export function ColorPalette({ value, onChange }: Props) {
                 <span className="text-xs font-medium text-foreground">
                   {p.name}
                 </span>
-                <span className="flex flex-wrap gap-1">
+                <span className="flex flex-wrap gap-1.5">
                   {p.colors.map((c) => (
                     <span
                       key={c}
-                      className="h-4 w-4 rounded-full border border-black/10"
+                      className="h-6 w-6 rounded-full border border-black/10"
                       style={{ backgroundColor: c }}
                     />
                   ))}

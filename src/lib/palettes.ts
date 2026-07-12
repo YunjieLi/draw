@@ -22,7 +22,6 @@ export const PALETTES: readonly Palette[] = [
       "#2244bb", // Sapphire Blue
       "#7b3fa0", // Amethyst Purple
       "#e5007e", // Fuchsia Pink
-      "#cc0066", // Magenta
     ],
   },
   {

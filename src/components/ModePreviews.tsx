@@ -57,21 +57,34 @@ export function TilesPreview({ className }: PreviewProps) {
 }
 
 export function MirrorPreview({ className }: PreviewProps) {
+  // A minimalist butterfly. Its left half is drawn once and mirrored across the
+  // vertical centre (x=60) so the two wings are exactly symmetric — echoing what
+  // Mirror mode does to every stroke.
+  const half = (
+    <>
+      {/* Antenna */}
+      <path d="M60,44 C53,34 47,31 43,31" {...strokeProps} />
+      {/* Upper wing */}
+      <path d="M60,52 C42,28 18,34 22,54 C25,68 46,64 60,58" {...strokeProps} />
+      {/* Lower wing */}
+      <path d="M60,62 C46,72 30,80 34,92 C37,102 54,94 60,80" {...strokeProps} />
+    </>
+  )
   return (
     <svg viewBox="0 0 120 120" className={className} role="img">
+      {/* Body doubles as the mirror axis. */}
       <line
         x1="60"
-        y1="8"
+        y1="44"
         x2="60"
-        y2="112"
+        y2="82"
         fill="none"
         stroke="currentColor"
-        strokeWidth={2}
-        strokeDasharray="4 6"
-        className="text-muted-foreground/60"
+        strokeWidth={4}
+        strokeLinecap="round"
       />
-      <path d="M60,90 C42,60 54,35 40,20" {...strokeProps} />
-      <path d="M60,90 C78,60 66,35 80,20" {...strokeProps} />
+      {half}
+      <g transform="translate(120,0) scale(-1,1)">{half}</g>
     </svg>
   )
 }
