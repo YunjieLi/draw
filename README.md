@@ -39,7 +39,7 @@ offline, and the Save / Gallery UI only appears once Supabase is configured.
 Data model:
 
 - **Auth** — anonymous guest sessions (each browser = one guest user).
-- **`drawings` table** — one row per saved drawing (`mode`, `title`, `storage_path`), protected by Row Level Security so each guest only sees their own.
+- **`drawings` table** — one row per saved drawing (`mode`, `storage_path`), protected by Row Level Security so each guest only sees their own.
 - **`drawings` storage bucket** — the rendered PNGs, written under `<user_id>/<uuid>.png`.
 
 ### Setup

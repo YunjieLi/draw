@@ -6,7 +6,6 @@ export type Drawing = {
   id: string
   user_id: string
   mode: DrawingMode
-  title: string
   storage_path: string
   created_at: string
   // Resolved public URL for the stored PNG (added client-side).
@@ -36,8 +35,7 @@ export function canvasToPngBlob(canvas: HTMLCanvasElement): Promise<Blob> {
 // Upload a PNG and insert its metadata row. RLS ties both to the current user.
 export async function saveDrawing(
   canvas: HTMLCanvasElement,
-  mode: DrawingMode,
-  title: string
+  mode: DrawingMode
 ): Promise<Drawing> {
   const {
     data: { user },
@@ -61,7 +59,6 @@ export async function saveDrawing(
     .insert({
       user_id: user.id,
       mode,
-      title: title.trim() || "Untitled",
       storage_path: path,
     })
     .select()
