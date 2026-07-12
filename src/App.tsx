@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react"
 
+import { AuthProvider } from "@/lib/auth"
 import FreeForm from "@/pages/FreeForm"
+import Gallery from "@/pages/Gallery"
 import Home from "@/pages/Home"
 import Mandala from "@/pages/Mandala"
 import Mirror from "@/pages/Mirror"
@@ -21,7 +23,7 @@ function useHashRoute() {
   return route
 }
 
-function App() {
+function Routes() {
   const route = useHashRoute()
 
   switch (route) {
@@ -33,9 +35,19 @@ function App() {
       return <Tiles />
     case "/mirror":
       return <Mirror />
+    case "/gallery":
+      return <Gallery />
     default:
       return <Home />
   }
+}
+
+function App() {
+  return (
+    <AuthProvider>
+      <Routes />
+    </AuthProvider>
+  )
 }
 
 export default App

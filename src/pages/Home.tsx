@@ -1,6 +1,7 @@
 import type { ComponentType } from "react"
-import { ArrowRight } from "lucide-react"
+import { ArrowRight, Images } from "lucide-react"
 
+import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import {
   FreeFormPreview,
@@ -8,6 +9,7 @@ import {
   MirrorPreview,
   TilesPreview,
 } from "@/components/ModePreviews"
+import { isSupabaseConfigured } from "@/lib/supabase"
 
 type Mode = {
   id: string
@@ -27,10 +29,19 @@ const modes: Mode[] = [
 export default function Home() {
   return (
     <div className="flex h-[100dvh] flex-col overflow-hidden bg-background p-5 sm:p-8 lg:p-10">
-      <header className="shrink-0">
+      <header className="flex shrink-0 items-center justify-between gap-3">
         <h1 className="text-3xl font-bold tracking-tight sm:text-4xl lg:text-5xl">
           Draw
         </h1>
+
+        {isSupabaseConfigured && (
+          <a href="#/gallery">
+            <Button variant="ghost" size="sm" className="gap-2">
+              <Images className="h-4 w-4" />
+              Gallery
+            </Button>
+          </a>
+        )}
       </header>
 
       <main className="flex min-h-0 flex-1 items-center justify-center py-4 sm:py-6">

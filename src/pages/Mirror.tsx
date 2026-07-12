@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react"
 import { ArrowLeft, RotateCcw } from "lucide-react"
 
+import { SaveButton } from "@/components/SaveButton"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { useStrokeWidth } from "@/lib/useStrokeWidth"
@@ -192,6 +193,8 @@ export default function Mirror() {
           >
             <RotateCcw />
           </Button>
+
+          <SaveButton canvasRef={canvasRef} mode="mirror" />
         </div>
       </header>
 
