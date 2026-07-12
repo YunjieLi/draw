@@ -1,18 +1,21 @@
 import { useState, type RefObject } from "react"
-import { Check, Loader2, Save } from "lucide-react"
+import { Camera, Check, Loader2 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { saveDrawing, type DrawingMode } from "@/lib/drawings"
 import { isSupabaseConfigured } from "@/lib/supabase"
 
 type Props = {
-  canvasRef: RefObject<HTMLCanvasElement>
   mode: DrawingMode
+  // Single-canvas modes pass a ref; multi-layer modes (e.g. Mandala) pass a
+  // compositor that flattens their layers into one canvas at save time.
+  canvasRef?: RefObject<HTMLCanvasElement>
+  getCanvas?: () => HTMLCanvasElement | null
 }
 
 type Status = "idle" | "saving" | "saved" | "error"
 
-export function SaveButton({ canvasRef, mode }: Props) {
+export function SaveButton({ canvasRef, getCanvas, mode }: Props) {
   const [status, setStatus] = useState<Status>("idle")
   const [error, setError] = useState<string | null>(null)
 
@@ -20,7 +23,7 @@ export function SaveButton({ canvasRef, mode }: Props) {
   if (!isSupabaseConfigured) return null
 
   async function save() {
-    const canvas = canvasRef.current
+    const canvas = getCanvas ? getCanvas() : (canvasRef?.current ?? null)
     if (!canvas || status === "saving") return
     setStatus("saving")
     setError(null)
@@ -50,7 +53,7 @@ export function SaveButton({ canvasRef, mode }: Props) {
         ) : status === "saved" ? (
           <Check className="text-emerald-600" />
         ) : (
-          <Save />
+          <Camera />
         )}
       </Button>
 
