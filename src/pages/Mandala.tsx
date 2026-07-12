@@ -6,6 +6,7 @@ import { ModeSwitcher } from "@/components/ModeSwitcher"
 import { SaveButton } from "@/components/SaveButton"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
+import { DEFAULT_PALETTE } from "@/lib/palettes"
 import { useStrokeWidth } from "@/lib/useStrokeWidth"
 
 type Point = { x: number; y: number }
@@ -13,16 +14,6 @@ type Layer = "line" | "color"
 
 // The line-art layer is always drawn in black.
 const LINE_COLOR = "#18181b"
-
-// Palette for the color layer — deliberately excludes black (that's line art).
-const PAINT_COLORS = [
-  "#ef4444",
-  "#f59e0b",
-  "#10b981",
-  "#3b82f6",
-  "#8b5cf6",
-  "#ec4899",
-]
 
 // Fixed drawing parameters.
 const MIRROR = false
@@ -42,12 +33,12 @@ export default function Mandala() {
   const drawingRef = useRef(false)
   const lastRef = useRef<Point | null>(null)
   const activePointerRef = useRef<number | null>(null)
-  const colorRef = useRef(PAINT_COLORS[0])
+  const colorRef = useRef(DEFAULT_PALETTE.colors[0])
   const layerRef = useRef<Layer>("line")
   const sectorsRef = useRef(SECTOR_CHOICES[0])
   const strokeRef = useStrokeWidth()
 
-  const [color, setColor] = useState(PAINT_COLORS[0])
+  const [color, setColor] = useState(DEFAULT_PALETTE.colors[0])
   const [layer, setLayer] = useState<Layer>("line")
   const [side, setSide] = useState(0)
   const [size, setSize] = useState({ w: 0, h: 0 })
@@ -323,7 +314,7 @@ export default function Mandala() {
         </main>
 
         {layer === "color" && (
-          <ColorPalette colors={PAINT_COLORS} value={color} onChange={setColor} />
+          <ColorPalette value={color} onChange={setColor} />
         )}
       </div>
     </div>
