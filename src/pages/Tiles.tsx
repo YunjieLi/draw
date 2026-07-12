@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react"
-import { ArrowLeft, RotateCcw } from "lucide-react"
+import { Images, RotateCcw } from "lucide-react"
 
+import { ColorPalette } from "@/components/ColorPalette"
+import { ModeSwitcher } from "@/components/ModeSwitcher"
 import { SaveButton } from "@/components/SaveButton"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
@@ -209,16 +211,7 @@ export default function Tiles() {
     <div className="flex h-[100dvh] flex-col overflow-hidden bg-muted/30">
       {/* Controls row */}
       <header className="z-10 flex shrink-0 items-center justify-between gap-3 border-b bg-background px-3 py-2 sm:px-4 sm:py-3">
-        <div className="flex items-center gap-1.5 sm:gap-2">
-          <a href="#/">
-            <Button variant="ghost" size="icon" aria-label="Back">
-              <ArrowLeft />
-            </Button>
-          </a>
-          <span className="text-base font-semibold tracking-tight sm:text-lg">
-            Tiles
-          </span>
-        </div>
+        <ModeSwitcher current="tiles" />
 
         <div className="flex items-center gap-2 sm:gap-3">
           {/* Layer toggle */}
@@ -241,27 +234,6 @@ export default function Tiles() {
             ))}
           </div>
 
-          {/* Color picker — only on the color layer, and never black. */}
-          {layer === "color" && (
-            <div className="flex items-center gap-1 sm:gap-1.5">
-              {PAINT_COLORS.map((c) => (
-                <button
-                  key={c}
-                  type="button"
-                  onClick={() => setColor(c)}
-                  aria-label={`Color ${c}`}
-                  className={cn(
-                    "h-5 w-5 rounded-full border transition-transform hover:scale-110 sm:h-6 sm:w-6",
-                    color === c
-                      ? "ring-2 ring-foreground ring-offset-2 ring-offset-background"
-                      : "border-black/10"
-                  )}
-                  style={{ backgroundColor: c }}
-                />
-              ))}
-            </div>
-          )}
-
           <Button
             variant="ghost"
             size="icon"
@@ -274,53 +246,66 @@ export default function Tiles() {
           <span className="h-6 w-px bg-border" />
 
           <SaveButton getCanvas={composeLayers} mode="tiles" />
+
+          <a href="#/gallery">
+            <Button variant="ghost" size="icon" aria-label="Gallery">
+              <Images />
+            </Button>
+          </a>
         </div>
       </header>
 
-      {/* Tiled canvas */}
-      <main
-        ref={containerRef}
-        className="flex min-h-0 flex-1 items-center justify-center p-6 sm:p-10 lg:p-12"
-      >
-        <div
-          className="relative overflow-hidden rounded-lg border bg-white shadow-sm"
-          style={{ width: side || undefined, height: side || undefined }}
+      {/* Drawing area — palette sits beside the canvas (bottom on portrait,
+          left on landscape), never overlapping it. */}
+      <div className="flex min-h-0 flex-1 flex-col landscape:flex-row">
+        <main
+          ref={containerRef}
+          className="flex min-h-0 flex-1 items-center justify-center p-6 sm:p-10 lg:p-12"
         >
-          {/* Color layer (bottom) — the top canvas captures pointer events and
-              routes strokes to the active layer. */}
-          <canvas
-            ref={colorCanvasRef}
-            className="pointer-events-none absolute inset-0 h-full w-full"
-          />
-          {/* Line-art layer (top) — always visually above the color layer. */}
-          <canvas
-            ref={lineCanvasRef}
-            className="absolute inset-0 h-full w-full touch-none"
-            onPointerDown={onPointerDown}
-            onPointerMove={onPointerMove}
-            onPointerUp={endStroke}
-            onPointerLeave={endStroke}
-            onPointerCancel={endStroke}
-          />
-          <svg
-            className="pointer-events-none absolute inset-0 h-full w-full"
-            width={size.w}
-            height={size.h}
+          <div
+            className="relative overflow-hidden rounded-lg border bg-white shadow-sm"
+            style={{ width: side || undefined, height: side || undefined }}
           >
-            {lines.map((l, i) => (
-              <line
-                key={i}
-                x1={l.x1}
-                y1={l.y1}
-                x2={l.x2}
-                y2={l.y2}
-                className="stroke-zinc-900/[0.06]"
-                strokeWidth={1}
-              />
-            ))}
-          </svg>
-        </div>
-      </main>
+            {/* Color layer (bottom) — the top canvas captures pointer events and
+                routes strokes to the active layer. */}
+            <canvas
+              ref={colorCanvasRef}
+              className="pointer-events-none absolute inset-0 h-full w-full"
+            />
+            {/* Line-art layer (top) — always visually above the color layer. */}
+            <canvas
+              ref={lineCanvasRef}
+              className="absolute inset-0 h-full w-full touch-none"
+              onPointerDown={onPointerDown}
+              onPointerMove={onPointerMove}
+              onPointerUp={endStroke}
+              onPointerLeave={endStroke}
+              onPointerCancel={endStroke}
+            />
+            <svg
+              className="pointer-events-none absolute inset-0 h-full w-full"
+              width={size.w}
+              height={size.h}
+            >
+              {lines.map((l, i) => (
+                <line
+                  key={i}
+                  x1={l.x1}
+                  y1={l.y1}
+                  x2={l.x2}
+                  y2={l.y2}
+                  className="stroke-zinc-900/[0.06]"
+                  strokeWidth={1}
+                />
+              ))}
+            </svg>
+          </div>
+        </main>
+
+        {layer === "color" && (
+          <ColorPalette colors={PAINT_COLORS} value={color} onChange={setColor} />
+        )}
+      </div>
     </div>
   )
 }

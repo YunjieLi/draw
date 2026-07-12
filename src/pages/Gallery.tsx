@@ -20,21 +20,15 @@ const MODE_LABELS: Record<DrawingMode, string> = {
   mirror: "Mirror",
 }
 
-// Tab order: "all" first, then the four modes.
-const FILTERS: Array<{ id: "all" | DrawingMode; label: string }> = [
-  { id: "all", label: "All" },
-  { id: "free-form", label: "Free form" },
-  { id: "mandala", label: "Mandala" },
-  { id: "tiles", label: "Tiles" },
-  { id: "mirror", label: "Mirror" },
-]
+const FILTERS: DrawingMode[] = ["free-form", "mandala", "tiles", "mirror"]
 
 export default function Gallery() {
   const { loading: authLoading } = useAuth()
   const [drawings, setDrawings] = useState<Drawing[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [filter, setFilter] = useState<"all" | DrawingMode>("all")
+  // Null until the user picks a tab; resolves to the first mode with drawings.
+  const [filter, setFilter] = useState<DrawingMode | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -55,14 +49,18 @@ export default function Gallery() {
 
   // Count per mode for the tab badges.
   const counts = useMemo(() => {
-    const c: Record<string, number> = { all: drawings.length }
+    const c: Record<string, number> = {}
     for (const d of drawings) c[d.mode] = (c[d.mode] ?? 0) + 1
     return c
   }, [drawings])
 
+  // Default the active tab to the first mode that actually has drawings.
+  const activeFilter =
+    filter ?? FILTERS.find((m) => (counts[m] ?? 0) > 0) ?? FILTERS[0]
+
   const visible = useMemo(
-    () => (filter === "all" ? drawings : drawings.filter((d) => d.mode === filter)),
-    [drawings, filter]
+    () => drawings.filter((d) => d.mode === activeFilter),
+    [drawings, activeFilter]
   )
 
   async function remove(d: Drawing) {
@@ -83,7 +81,7 @@ export default function Gallery() {
       <header className="z-10 flex shrink-0 items-center justify-between gap-3 border-b bg-background px-3 py-2 sm:px-4 sm:py-3">
         <div className="flex items-center gap-1.5 sm:gap-2">
           <a href="#/">
-            <Button variant="ghost" size="icon" aria-label="Back">
+            <Button variant="ghost" size="icon" aria-label="Back to drawing">
               <ArrowLeft />
             </Button>
           </a>
@@ -93,18 +91,18 @@ export default function Gallery() {
         </div>
       </header>
 
-      {/* Filter tabs — only meaningful once there are drawings. */}
+      {/* Filter tabs — one per mode; only meaningful once there are drawings. */}
       {ready && hasAny && (
         <div className="shrink-0 border-b bg-background px-3 py-2 sm:px-4">
           <div className="flex flex-wrap gap-1.5">
-            {FILTERS.map((f) => {
-              const count = counts[f.id] ?? 0
-              const active = filter === f.id
+            {FILTERS.map((id) => {
+              const count = counts[id] ?? 0
+              const active = activeFilter === id
               return (
                 <button
-                  key={f.id}
+                  key={id}
                   type="button"
-                  onClick={() => setFilter(f.id)}
+                  onClick={() => setFilter(id)}
                   className={cn(
                     "rounded-full px-3 py-1 text-sm font-medium transition-colors",
                     active
@@ -112,7 +110,7 @@ export default function Gallery() {
                       : "text-muted-foreground hover:bg-muted"
                   )}
                 >
-                  {f.label}
+                  {MODE_LABELS[id]}
                   <span
                     className={cn(
                       "ml-1.5 text-xs",
@@ -155,12 +153,12 @@ export default function Gallery() {
           </Centered>
         ) : visible.length === 0 ? (
           <Centered>
-            <p>No {MODE_LABELS[filter as DrawingMode]} drawings yet.</p>
+            <p>No {MODE_LABELS[activeFilter]} drawings yet.</p>
           </Centered>
         ) : (
           <div className="mx-auto grid max-w-5xl grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-5 lg:grid-cols-4">
             {visible.map((d) => (
-              <Card key={d.id} className="group overflow-hidden">
+              <Card key={d.id} className="group relative overflow-hidden">
                 <div className="aspect-square bg-white">
                   <img
                     src={d.url}
@@ -169,20 +167,14 @@ export default function Gallery() {
                     className="h-full w-full object-contain"
                   />
                 </div>
-                <div className="flex items-center gap-2 p-3">
-                  <p className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
-                    {MODE_LABELS[d.mode]}
-                  </p>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    aria-label="Delete drawing"
-                    onClick={() => void remove(d)}
-                    className="shrink-0 text-muted-foreground hover:text-red-600"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
+                <button
+                  type="button"
+                  aria-label="Delete drawing"
+                  onClick={() => void remove(d)}
+                  className="absolute right-2 top-2 rounded-md bg-background/80 p-1.5 text-muted-foreground shadow-sm backdrop-blur transition-colors hover:text-red-600"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
               </Card>
             ))}
           </div>

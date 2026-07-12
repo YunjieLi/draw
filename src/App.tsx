@@ -3,7 +3,6 @@ import { useEffect, useState } from "react"
 import { AuthProvider } from "@/lib/auth"
 import FreeForm from "@/pages/FreeForm"
 import Gallery from "@/pages/Gallery"
-import Home from "@/pages/Home"
 import Mandala from "@/pages/Mandala"
 import Mirror from "@/pages/Mirror"
 import Tiles from "@/pages/Tiles"
@@ -29,16 +28,16 @@ function Routes() {
   switch (route) {
     case "/free-form":
       return <FreeForm />
-    case "/mandala":
-      return <Mandala />
     case "/tiles":
       return <Tiles />
     case "/mirror":
       return <Mirror />
     case "/gallery":
       return <Gallery />
+    case "/mandala":
     default:
-      return <Home />
+      // Mandala is the default landing experience (no separate home page).
+      return <Mandala />
   }
 }
 
