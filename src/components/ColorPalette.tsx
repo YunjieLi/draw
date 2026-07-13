@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react"
-import { ChevronDown, Palette as PaletteIcon } from "lucide-react"
+import { ChevronDown } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 import { DEFAULT_PALETTE_ID, PALETTES } from "@/lib/palettes"
@@ -7,17 +7,17 @@ import { DEFAULT_PALETTE_ID, PALETTES } from "@/lib/palettes"
 type Props = {
   value: string
   onChange: (color: string) => void
-  // Optional control rendered at the leading edge of the bar (left of the
-  // palette icon in portrait, above it in landscape) — e.g. a tool toggle.
-  leading?: ReactNode
+  // Optional control rendered at the trailing/bottom edge of the bar (after the
+  // palette pill) — e.g. an overflow "…" menu.
+  footer?: ReactNode
 }
 
 // Color palette shown beside the canvas on the color layer (never overlapping
 // it): a horizontal bar along the bottom on portrait viewports, and a vertical
-// bar on the left on landscape ones. An icon button opens a popover for
-// switching between named palettes (see @/lib/palettes); each option previews
-// its full set of swatches.
-export function ColorPalette({ value, onChange, leading }: Props) {
+// bar on the left on landscape ones. The swatches and the palette-picker entry
+// live inside a single rounded "pill"; the picker chevron opens a popover for
+// switching between named palettes (see @/lib/palettes).
+export function ColorPalette({ value, onChange, footer }: Props) {
   const [paletteId, setPaletteId] = useState(DEFAULT_PALETTE_ID)
   const [open, setOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
@@ -58,20 +58,43 @@ export function ColorPalette({ value, onChange, leading }: Props) {
         "landscape:order-first landscape:flex-col"
       )}
     >
-      {leading}
-
+      {/* Single pill wrapping the swatches and the palette-picker entry. */}
       <div ref={menuRef} className="relative">
-        <button
-          type="button"
-          onClick={() => setOpen((o) => !o)}
-          aria-haspopup="listbox"
-          aria-expanded={open}
-          aria-label="Choose color palette"
-          className="flex items-center gap-1 rounded-md border bg-background px-2 py-1.5 text-foreground shadow-sm transition-colors hover:bg-muted"
+        <div
+          className={cn(
+            "flex items-center gap-2 rounded-full border bg-background p-2 shadow-sm",
+            // Row of swatches in portrait, column in landscape.
+            "landscape:flex-col"
+          )}
         >
-          <PaletteIcon className="h-4 w-4" />
-          <ChevronDown className="h-3.5 w-3.5 opacity-60" />
-        </button>
+          {palette.colors.map((c) => (
+            <button
+              key={c}
+              type="button"
+              onClick={() => onChange(c)}
+              aria-label={`Color ${c}`}
+              className={cn(
+                "h-8 w-8 shrink-0 rounded-full border transition-transform hover:scale-110 sm:h-9 sm:w-9",
+                value === c
+                  ? "ring-2 ring-foreground ring-offset-2 ring-offset-background"
+                  : "border-black/10"
+              )}
+              style={{ backgroundColor: c }}
+            />
+          ))}
+
+          {/* Palette-picker entry point — opens the named-palette popover. */}
+          <button
+            type="button"
+            onClick={() => setOpen((o) => !o)}
+            aria-haspopup="listbox"
+            aria-expanded={open}
+            aria-label="Choose color palette"
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-foreground/70 transition-colors hover:bg-muted hover:text-foreground sm:h-9 sm:w-9"
+          >
+            <ChevronDown className="h-4 w-4" />
+          </button>
+        </div>
 
         {open && (
           <div
@@ -114,30 +137,7 @@ export function ColorPalette({ value, onChange, leading }: Props) {
         )}
       </div>
 
-      {/* Padding leaves room for the selected swatch's ring so it isn't clipped
-          by the scroll container's edges. */}
-      <div
-        className={cn(
-          "flex flex-wrap items-center justify-center gap-2 p-2 sm:gap-3",
-          "landscape:flex-col landscape:flex-nowrap landscape:overflow-y-auto"
-        )}
-      >
-        {palette.colors.map((c) => (
-          <button
-            key={c}
-            type="button"
-            onClick={() => onChange(c)}
-            aria-label={`Color ${c}`}
-            className={cn(
-              "h-8 w-8 shrink-0 rounded-full border transition-transform hover:scale-110 sm:h-9 sm:w-9",
-              value === c
-                ? "ring-2 ring-foreground ring-offset-2 ring-offset-background"
-                : "border-black/10"
-            )}
-            style={{ backgroundColor: c }}
-          />
-        ))}
-      </div>
+      {footer}
     </div>
   )
 }
