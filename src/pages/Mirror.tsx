@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react"
-import { Images, RotateCcw } from "lucide-react"
+import { LayoutGrid, RotateCcw } from "lucide-react"
 
 import { ColorPalette } from "@/components/ColorPalette"
 import { ModeSwitcher } from "@/components/ModeSwitcher"
@@ -219,8 +219,9 @@ export default function Mirror() {
           <SaveButton getCanvas={composeLayers} mode="mirror" />
 
           <a href="#/gallery">
-            <Button variant="ghost" size="icon" aria-label="Gallery">
-              <Images />
+            <Button variant="outline">
+              <LayoutGrid />
+              Library
             </Button>
           </a>
         </div>
@@ -231,7 +232,7 @@ export default function Mirror() {
       <div className="flex min-h-0 flex-1 flex-col landscape:flex-row">
         <main
           ref={containerRef}
-          className="flex min-h-0 flex-1 items-center justify-center p-6 sm:p-10 lg:p-12"
+          className="flex min-h-0 flex-1 items-center justify-center p-4"
         >
           <div
             className="relative overflow-hidden rounded-lg border bg-white shadow-sm"

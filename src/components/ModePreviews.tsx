@@ -56,6 +56,18 @@ export function TilesPreview({ className }: PreviewProps) {
   )
 }
 
+export function LineArtPreview({ className }: PreviewProps) {
+  // A framed picture with a simple mushroom motif — a ready-made line drawing
+  // to color in, echoing the read-only line-art library.
+  return (
+    <svg viewBox="0 0 120 120" className={className} role="img">
+      <rect x="18" y="16" width="84" height="88" rx="10" {...strokeProps} />
+      <path d="M38,58 C38,39 82,39 82,58 Z" {...strokeProps} />
+      <path d="M53,58 L53,76 Q60,82 67,76 L67,58" {...strokeProps} />
+    </svg>
+  )
+}
+
 export function MirrorPreview({ className }: PreviewProps) {
   // A minimalist butterfly. Its left half is drawn once and mirrored across the
   // vertical centre (x=60) so the two wings are exactly symmetric — echoing what

@@ -18,9 +18,16 @@ const MODE_LABELS: Record<DrawingMode, string> = {
   mandala: "Mandala",
   tiles: "Tiles",
   mirror: "Mirror",
+  "line-art": "Line art",
 }
 
-const FILTERS: DrawingMode[] = ["free-form", "mandala", "tiles", "mirror"]
+const FILTERS: DrawingMode[] = [
+  "free-form",
+  "mandala",
+  "tiles",
+  "mirror",
+  "line-art",
+]
 
 export default function Gallery() {
   const { loading: authLoading } = useAuth()

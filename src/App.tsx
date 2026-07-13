@@ -3,6 +3,7 @@ import { useEffect, useState } from "react"
 import { AuthProvider } from "@/lib/auth"
 import FreeForm from "@/pages/FreeForm"
 import Gallery from "@/pages/Gallery"
+import LineArt from "@/pages/LineArt"
 import Mandala from "@/pages/Mandala"
 import Mirror from "@/pages/Mirror"
 import Tiles from "@/pages/Tiles"
@@ -32,6 +33,8 @@ function Routes() {
       return <Tiles />
     case "/mirror":
       return <Mirror />
+    case "/line-art":
+      return <LineArt />
     case "/gallery":
       return <Gallery />
     case "/mandala":

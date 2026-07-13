@@ -6,7 +6,7 @@
 create table if not exists public.drawings (
   id           uuid primary key default gen_random_uuid(),
   user_id      uuid not null references auth.users (id) on delete cascade,
-  mode         text not null check (mode in ('free-form', 'mandala', 'tiles', 'mirror')),
+  mode         text not null check (mode in ('free-form', 'mandala', 'tiles', 'mirror', 'line-art')),
   title        text not null default 'Untitled',
   storage_path text not null,
   created_at   timestamptz not null default now()
@@ -14,6 +14,12 @@ create table if not exists public.drawings (
 
 create index if not exists drawings_user_id_created_at_idx
   on public.drawings (user_id, created_at desc);
+
+-- Keep the mode check current when new modes are added (the "if not exists"
+-- table create above won't alter an existing constraint, so re-apply it here).
+alter table public.drawings drop constraint if exists drawings_mode_check;
+alter table public.drawings add constraint drawings_mode_check
+  check (mode in ('free-form', 'mandala', 'tiles', 'mirror', 'line-art'));
 
 -- 2. Row Level Security: users only see and manage their own rows.
 alter table public.drawings enable row level security;

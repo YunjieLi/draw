@@ -1,6 +1,11 @@
 import { DRAWINGS_BUCKET, supabase } from "@/lib/supabase"
 
-export type DrawingMode = "free-form" | "mandala" | "tiles" | "mirror"
+export type DrawingMode =
+  | "free-form"
+  | "mandala"
+  | "tiles"
+  | "mirror"
+  | "line-art"
 
 export type Drawing = {
   id: string
