@@ -6,7 +6,7 @@ import { Card } from "@/components/ui/card"
 import { useAuth } from "@/lib/auth"
 import {
   deleteDrawing,
-  listMyDrawings,
+  listGalleryDrawings,
   type Drawing,
   type DrawingMode,
 } from "@/lib/drawings"
@@ -30,7 +30,7 @@ const FILTERS: DrawingMode[] = [
 ]
 
 export default function Gallery() {
-  const { loading: authLoading } = useAuth()
+  const { user, loading: authLoading } = useAuth()
   const [drawings, setDrawings] = useState<Drawing[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -41,7 +41,7 @@ export default function Gallery() {
     setLoading(true)
     setError(null)
     try {
-      setDrawings(await listMyDrawings())
+      setDrawings(await listGalleryDrawings())
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load drawings.")
     } finally {
@@ -174,14 +174,17 @@ export default function Gallery() {
                     className="h-full w-full object-contain"
                   />
                 </div>
-                <button
-                  type="button"
-                  aria-label="Delete drawing"
-                  onClick={() => void remove(d)}
-                  className="absolute right-2 top-2 rounded-md bg-background/80 p-1.5 text-muted-foreground shadow-sm backdrop-blur transition-colors hover:text-red-600"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </button>
+                {/* Only the owner can delete — RLS blocks deleting others' rows. */}
+                {d.user_id === user?.id && (
+                  <button
+                    type="button"
+                    aria-label="Delete drawing"
+                    onClick={() => void remove(d)}
+                    className="absolute right-2 top-2 rounded-md bg-background/80 p-1.5 text-muted-foreground shadow-sm backdrop-blur transition-colors hover:text-red-600"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                )}
               </Card>
             ))}
           </div>

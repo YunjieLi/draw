@@ -24,10 +24,13 @@ alter table public.drawings add constraint drawings_mode_check
 -- 2. Row Level Security: users only see and manage their own rows.
 alter table public.drawings enable row level security;
 
+-- Shared gallery: anyone (including anonymous guests) can read every drawing.
+-- Insert/delete below stay owner-only, so users can only add or remove their own.
 drop policy if exists "Users can read own drawings" on public.drawings;
-create policy "Users can read own drawings"
+drop policy if exists "Anyone can read drawings" on public.drawings;
+create policy "Anyone can read drawings"
   on public.drawings for select
-  using (auth.uid() = user_id);
+  using (true);
 
 drop policy if exists "Users can insert own drawings" on public.drawings;
 create policy "Users can insert own drawings"

@@ -78,8 +78,9 @@ export async function saveDrawing(
   return { ...(data as Omit<Drawing, "url">), url: publicUrl(path) }
 }
 
-// List the signed-in user's drawings, newest first.
-export async function listMyDrawings(): Promise<Drawing[]> {
+// List every saved drawing in the shared gallery, newest first. The read RLS
+// policy is public (see supabase/schema.sql), so this returns all users' rows.
+export async function listGalleryDrawings(): Promise<Drawing[]> {
   const { data, error } = await supabase
     .from("drawings")
     .select("*")
