@@ -1,15 +1,31 @@
 import { useEffect, useRef, useState } from "react"
-import { FilePlus, LayoutGrid, RotateCcw, X } from "lucide-react"
+import { Brush, FilePlus, LayoutGrid, PaintBucket, RotateCcw, X } from "lucide-react"
 
 import { ColorPalette } from "@/components/ColorPalette"
 import { ModeSwitcher } from "@/components/ModeSwitcher"
 import { SaveButton } from "@/components/SaveButton"
 import { Button } from "@/components/ui/button"
+import { cn } from "@/lib/utils"
 import { DEFAULT_PALETTE } from "@/lib/palettes"
 import { LINEARTS, type LineArt as LineArtDef } from "@/lib/linearts"
 import { useStrokeWidth } from "@/lib/useStrokeWidth"
 
 type Point = { x: number; y: number }
+type Tool = "brush" | "bucket"
+
+// A pixel of the line-art layer counts as a "wall" (a boundary the bucket fill
+// cannot cross) when its rendered alpha clears this threshold. The lines are
+// drawn well above it; antialiased fringes fall below, so the fill stops just
+// shy of a line — harmless since the opaque line overlay hides that seam.
+const WALL_ALPHA = 100
+
+// #rrggbb / #rgb -> [r, g, b]. Palette colors are always hex.
+function hexToRgb(hex: string): [number, number, number] {
+  let h = hex.replace("#", "")
+  if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2]
+  const n = parseInt(h, 16)
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255]
+}
 
 // Line-art mode: pick a read-only line drawing from the library, then color it
 // in. Unlike the freehand modes there is no line/color toggle — the chosen art
@@ -108,6 +124,48 @@ function LibraryModal({
   )
 }
 
+// Segmented brush/bucket switch shown at the leading edge of the palette bar.
+// Brush paints freehand strokes; bucket flood-fills the tapped enclosed region.
+function ToolToggle({
+  tool,
+  onChange,
+}: {
+  tool: Tool
+  onChange: (tool: Tool) => void
+}) {
+  const options: { value: Tool; label: string; Icon: typeof Brush }[] = [
+    { value: "brush", label: "Brush", Icon: Brush },
+    { value: "bucket", label: "Fill", Icon: PaintBucket },
+  ]
+  return (
+    <div
+      role="radiogroup"
+      aria-label="Tool"
+      className="flex gap-1 rounded-lg border bg-background p-1 shadow-sm landscape:flex-col"
+    >
+      {options.map(({ value, label, Icon }) => (
+        <button
+          key={value}
+          type="button"
+          role="radio"
+          aria-checked={tool === value}
+          aria-label={label}
+          title={label}
+          onClick={() => onChange(value)}
+          className={cn(
+            "flex h-8 w-8 items-center justify-center rounded-md transition-colors",
+            tool === value
+              ? "bg-foreground text-background"
+              : "text-foreground hover:bg-muted"
+          )}
+        >
+          <Icon className="h-4 w-4" />
+        </button>
+      ))}
+    </div>
+  )
+}
+
 // Coloring surface: the line art sits as a fixed overlay above a single color
 // canvas that captures all pointer input.
 function LineArtColoring({
@@ -127,21 +185,32 @@ function LineArtColoring({
   const activePointerRef = useRef<number | null>(null)
   const colorRef = useRef(DEFAULT_PALETTE.colors[0])
   const strokeRef = useStrokeWidth()
+  // Bucket-fill boundary mask: 1 = line-art wall, 0 = fillable, sized to match
+  // the backing canvas' device pixels. Rebuilt lazily and invalidated whenever
+  // the canvas is resized or the art changes.
+  const wallMaskRef = useRef<{ w: number; h: number; data: Uint8Array } | null>(
+    null
+  )
 
   const [color, setColor] = useState(DEFAULT_PALETTE.colors[0])
+  const [tool, setTool] = useState<Tool>("brush")
+  const toolRef = useRef<Tool>("brush")
   const [size, setSize] = useState<{ w: number; h: number }>({ w: 0, h: 0 })
   // Portrait default until the decoded image gives us the real aspect ratio.
   const [aspect, setAspect] = useState(3 / 4)
 
   colorRef.current = color
+  toolRef.current = tool
 
   // Decode the line art once: it drives the fitted aspect ratio and is composited
   // over the color layer at save time.
   useEffect(() => {
     lineImgRef.current = null
+    wallMaskRef.current = null
     const img = new Image()
     img.onload = () => {
       lineImgRef.current = img
+      wallMaskRef.current = null
       if (img.naturalWidth > 0 && img.naturalHeight > 0)
         setAspect(img.naturalWidth / img.naturalHeight)
     }
@@ -200,6 +269,8 @@ function LineArtColoring({
     ctx.lineCap = "round"
     ctx.lineJoin = "round"
     colorCtxRef.current = ctx
+    // Resolution changed: the wall mask no longer matches the canvas.
+    wallMaskRef.current = null
 
     if (snapshot) ctx.drawImage(snapshot, 0, 0, rect.width, rect.height)
   }, [size])
@@ -220,12 +291,91 @@ function LineArtColoring({
     return { x: e.clientX - rect.left, y: e.clientY - rect.top }
   }
 
+  // Rasterize the line art at the canvas' device resolution and mark every
+  // wall pixel. Built once per size/art and cached for subsequent fills.
+  function getWallMask() {
+    const canvas = colorCanvasRef.current
+    const img = lineImgRef.current
+    if (!canvas || !img) return null
+    const w = canvas.width
+    const h = canvas.height
+    const cached = wallMaskRef.current
+    if (cached && cached.w === w && cached.h === h) return cached
+
+    const off = document.createElement("canvas")
+    off.width = w
+    off.height = h
+    const octx = off.getContext("2d", { willReadFrequently: true })!
+    octx.drawImage(img, 0, 0, w, h)
+    const px = octx.getImageData(0, 0, w, h).data
+    const data = new Uint8Array(w * h)
+    for (let i = 0; i < data.length; i++)
+      if (px[i * 4 + 3] >= WALL_ALPHA) data[i] = 1
+
+    const mask = { w, h, data }
+    wallMaskRef.current = mask
+    return mask
+  }
+
+  // Flood-fill the closed region of the color layer containing (cssX, cssY),
+  // stopping at line-art walls. Coordinates are in CSS pixels relative to the
+  // canvas; they're mapped to device pixels for the fill.
+  function bucketFill(cssX: number, cssY: number) {
+    const canvas = colorCanvasRef.current
+    const ctx = colorCtxRef.current
+    const mask = getWallMask()
+    if (!canvas || !ctx || !mask) return
+    const rect = canvas.getBoundingClientRect()
+    if (rect.width === 0 || rect.height === 0) return
+
+    const w = canvas.width
+    const h = canvas.height
+    const sx = Math.floor((cssX / rect.width) * w)
+    const sy = Math.floor((cssY / rect.height) * h)
+    if (sx < 0 || sy < 0 || sx >= w || sy >= h) return
+    const start = sy * w + sx
+    if (mask.data[start]) return // tapped on a line — nothing to fill
+
+    const [r, g, b] = hexToRgb(colorRef.current)
+    // getImageData/putImageData operate in device pixels, ignoring the DPR
+    // transform set on the context, so no coordinate scaling is needed here.
+    const image = ctx.getImageData(0, 0, w, h)
+    const d = image.data
+    const seen = new Uint8Array(w * h)
+    const stack = [start]
+    seen[start] = 1
+    while (stack.length) {
+      const i = stack.pop()!
+      const p = i * 4
+      d[p] = r
+      d[p + 1] = g
+      d[p + 2] = b
+      d[p + 3] = 255
+      const x = i % w
+      const left = i - 1
+      const right = i + 1
+      const up = i - w
+      const down = i + w
+      if (x > 0 && !seen[left] && !mask.data[left]) (seen[left] = 1), stack.push(left)
+      if (x < w - 1 && !seen[right] && !mask.data[right])
+        (seen[right] = 1), stack.push(right)
+      if (up >= 0 && !seen[up] && !mask.data[up]) (seen[up] = 1), stack.push(up)
+      if (down < w * h && !seen[down] && !mask.data[down])
+        (seen[down] = 1), stack.push(down)
+    }
+    ctx.putImageData(image, 0, 0)
+  }
+
   function onPointerDown(e: React.PointerEvent<HTMLCanvasElement>) {
     if (activePointerRef.current !== null) return
+    const p = pointFromEvent(e)
+    if (toolRef.current === "bucket") {
+      bucketFill(p.x, p.y)
+      return
+    }
     activePointerRef.current = e.pointerId
     e.currentTarget.setPointerCapture(e.pointerId)
     drawingRef.current = true
-    const p = pointFromEvent(e)
     lastRef.current = p
     stamp(p, p)
   }
@@ -314,6 +464,7 @@ function LineArtColoring({
             <canvas
               ref={colorCanvasRef}
               className="absolute inset-0 h-full w-full touch-none"
+              style={{ cursor: tool === "bucket" ? "cell" : "crosshair" }}
               onPointerDown={onPointerDown}
               onPointerMove={onPointerMove}
               onPointerUp={endStroke}
@@ -331,8 +482,11 @@ function LineArtColoring({
           </div>
         </main>
 
-        {/* Only the color option is available in this mode. */}
-        <ColorPalette value={color} onChange={setColor} />
+        <ColorPalette
+          value={color}
+          onChange={setColor}
+          leading={<ToolToggle tool={tool} onChange={setTool} />}
+        />
       </div>
     </div>
   )

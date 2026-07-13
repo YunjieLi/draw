@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useRef, useState, type ReactNode } from "react"
 import { ChevronDown, Palette as PaletteIcon } from "lucide-react"
 
 import { cn } from "@/lib/utils"
@@ -7,6 +7,9 @@ import { DEFAULT_PALETTE_ID, PALETTES } from "@/lib/palettes"
 type Props = {
   value: string
   onChange: (color: string) => void
+  // Optional control rendered at the leading edge of the bar (left of the
+  // palette icon in portrait, above it in landscape) — e.g. a tool toggle.
+  leading?: ReactNode
 }
 
 // Color palette shown beside the canvas on the color layer (never overlapping
@@ -14,7 +17,7 @@ type Props = {
 // bar on the left on landscape ones. An icon button opens a popover for
 // switching between named palettes (see @/lib/palettes); each option previews
 // its full set of swatches.
-export function ColorPalette({ value, onChange }: Props) {
+export function ColorPalette({ value, onChange, leading }: Props) {
   const [paletteId, setPaletteId] = useState(DEFAULT_PALETTE_ID)
   const [open, setOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
@@ -55,6 +58,8 @@ export function ColorPalette({ value, onChange }: Props) {
         "landscape:order-first landscape:flex-col"
       )}
     >
+      {leading}
+
       <div ref={menuRef} className="relative">
         <button
           type="button"
