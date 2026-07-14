@@ -79,6 +79,38 @@ export function computeRegion(
   return region
 }
 
+// Flood the closed region containing `start` directly into a shared `union`
+// mask, marking every reached pixel. Returns true if it filled anything (false
+// if `start` is a wall or was already covered by a prior flood). Use this to
+// union several seeds' regions without allocating and merging a mask per seed.
+export function floodInto(
+  union: Uint8Array,
+  wall: Uint8Array,
+  w: number,
+  h: number,
+  start: number
+): boolean {
+  if (wall[start] || union[start]) return false
+  const n = w * h
+  const stack = [start]
+  union[start] = 1
+  while (stack.length) {
+    const i = stack.pop()!
+    const x = i % w
+    const left = i - 1
+    const right = i + 1
+    const up = i - w
+    const down = i + w
+    if (x > 0 && !union[left] && !wall[left]) (union[left] = 1), stack.push(left)
+    if (x < w - 1 && !union[right] && !wall[right])
+      (union[right] = 1), stack.push(right)
+    if (up >= 0 && !union[up] && !wall[up]) (union[up] = 1), stack.push(up)
+    if (down < n && !union[down] && !wall[down])
+      (union[down] = 1), stack.push(down)
+  }
+  return true
+}
+
 // Grow `region` outward by `bleed` pixels, but only across wall pixels — so
 // paint slides under the antialiased line edge yet can never reach the fillable
 // interior of an adjacent region. Returns the expanded mask.

@@ -5,10 +5,11 @@ import {
   beginClippedStroke,
   bleedUnderLines,
   buildClipCanvas,
-  computeRegion,
+  floodInto,
   stampBbox,
   wallMaskFromCanvas,
   type ClippedStroke,
+  type WallMask,
 } from "./boundaryProtection"
 
 type Point = { x: number; y: number }
@@ -44,6 +45,14 @@ export function useBoundaryProtection({
   // region and touches only their bounding box (see beginClippedStroke). Null
   // when not drawing a protected stroke.
   const active = useRef<ClippedStroke | null>(null)
+  // The line layer's wall mask, cached across strokes so we don't re-read every
+  // pixel on each pointer-down. Invalidated (via invalidateWalls) whenever the
+  // line layer is drawn on or cleared, and rebuilt if the canvas is resized.
+  const wallCache = useRef<WallMask | null>(null)
+
+  function invalidateWalls() {
+    wallCache.current = null
+  }
 
   function begin(start: Point): boolean {
     const colorCanvas = colorCanvasRef.current
@@ -54,7 +63,11 @@ export function useBoundaryProtection({
     const rect = colorCanvas.getBoundingClientRect()
     if (rect.width === 0 || rect.height === 0) return false
 
-    const mask = wallMaskFromCanvas(lineCanvas)
+    let mask = wallCache.current
+    if (!mask || mask.w !== lineCanvas.width || mask.h !== lineCanvas.height) {
+      mask = wallMaskFromCanvas(lineCanvas)
+      wallCache.current = mask
+    }
     if (!mask || !mask.hasWall) return false // nothing drawn to stay inside of
 
     // Union the regions of every place this stroke's stamps will land.
@@ -67,11 +80,7 @@ export function useBoundaryProtection({
       const iy = Math.floor(pt.y * sy)
       if (ix < 0 || iy < 0 || ix >= w || iy >= h) continue
       const idx = iy * w + ix
-      if (union[idx] || mask.data[idx]) continue // covered, or lands on a line
-      const region = computeRegion(mask.data, w, h, idx)
-      if (!region) continue
-      for (let i = 0; i < union.length; i++) if (region[i]) union[i] = 1
-      any = true
+      if (floodInto(union, mask.data, w, h, idx)) any = true
     }
     if (!any) return false // every stamp seed sits on a line
 
@@ -116,5 +125,5 @@ export function useBoundaryProtection({
     return active.current !== null
   }
 
-  return { begin, draw, end, isActive }
+  return { begin, draw, end, isActive, invalidateWalls }
 }

@@ -182,6 +182,8 @@ export default function Mirror() {
     lastRef.current = null
     activePointerRef.current = null
     protection.end()
+    // A finished line-layer stroke changed the walls; drop the cached mask.
+    if (layerRef.current === "line") protection.invalidateWalls()
   }
 
   function clear() {
@@ -193,6 +195,7 @@ export default function Mirror() {
       ctx.clearRect(0, 0, canvas.width, canvas.height)
       ctx.restore()
     }
+    protection.invalidateWalls()
   }
 
   // Flatten both layers (color beneath, line art on top) for saving.
