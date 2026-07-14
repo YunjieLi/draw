@@ -3,10 +3,13 @@ import { LayoutGrid, RotateCcw } from "lucide-react"
 
 import { ColorPalette } from "@/components/ColorPalette"
 import { ModeSwitcher } from "@/components/ModeSwitcher"
+import { ProtectionMenu } from "@/components/ProtectionMenu"
 import { SaveButton } from "@/components/SaveButton"
+import { SaveLineArtMenu } from "@/components/SaveLineArtMenu"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { DEFAULT_PALETTE } from "@/lib/palettes"
+import { useBoundaryProtection } from "@/lib/useBoundaryProtection"
 import { useStrokeWidth } from "@/lib/useStrokeWidth"
 
 type Point = { x: number; y: number }
@@ -32,10 +35,14 @@ export default function FreeForm() {
   const [color, setColor] = useState(DEFAULT_PALETTE.colors[0])
   const [layer, setLayer] = useState<Layer>("line")
   const [side, setSide] = useState(0)
+  // Boundary protection keeps color strokes inside the lines; on by default.
+  const [protect, setProtect] = useState(true)
+  const protectRef = useRef(true)
 
   // Line art is always black; the color layer uses the picked color.
   colorRef.current = layer === "line" ? LINE_COLOR : color
   layerRef.current = layer
+  protectRef.current = protect
 
   // Fit the square canvas to the largest square inside its container.
   useEffect(() => {
@@ -95,12 +102,8 @@ export default function FreeForm() {
     resize(line, lineCtxRef)
   }, [side])
 
-  // Draw a single freehand segment on the active layer.
-  function stamp(a: Point, b: Point) {
-    const ctx =
-      layerRef.current === "line" ? lineCtxRef.current : colorCtxRef.current
-    if (!ctx) return
-
+  // Draw a single freehand segment onto a given context.
+  function stampOn(ctx: CanvasRenderingContext2D, a: Point, b: Point) {
     ctx.strokeStyle = colorRef.current
     ctx.lineWidth = strokeRef.current
     ctx.beginPath()
@@ -108,6 +111,25 @@ export default function FreeForm() {
     ctx.lineTo(b.x, b.y)
     ctx.stroke()
   }
+
+  // Draw on the active layer's live canvas.
+  function stamp(a: Point, b: Point) {
+    const ctx =
+      layerRef.current === "line" ? lineCtxRef.current : colorCtxRef.current
+    if (ctx) stampOn(ctx, a, b)
+  }
+
+  // FreeForm has no symmetry, so a stroke lands only at the pointer.
+  const seedPoints = (p: Point) => [p]
+
+  // Confines color strokes to the closed region of the line layer they start in.
+  const protection = useBoundaryProtection({
+    colorCanvasRef,
+    colorCtxRef,
+    lineCanvasRef,
+    stampOn,
+    seedPoints,
+  })
 
   function pointFromEvent(e: React.PointerEvent<HTMLCanvasElement>): Point {
     const rect = lineCanvasRef.current!.getBoundingClientRect()
@@ -117,19 +139,25 @@ export default function FreeForm() {
   function onPointerDown(e: React.PointerEvent<HTMLCanvasElement>) {
     // Single-touch only: ignore extra fingers while one is already drawing.
     if (activePointerRef.current !== null) return
+    const p = pointFromEvent(e)
+    // In the color layer, confine to the region under the pointer when enabled
+    // and the line layer actually encloses one.
+    const confined =
+      layerRef.current === "color" && protectRef.current && protection.begin(p)
     activePointerRef.current = e.pointerId
     e.currentTarget.setPointerCapture(e.pointerId)
     drawingRef.current = true
-    const p = pointFromEvent(e)
     lastRef.current = p
-    stamp(p, p)
+    if (confined) protection.draw(p, p)
+    else stamp(p, p)
   }
 
   function onPointerMove(e: React.PointerEvent<HTMLCanvasElement>) {
     if (e.pointerId !== activePointerRef.current) return
     if (!drawingRef.current || !lastRef.current) return
     const p = pointFromEvent(e)
-    stamp(lastRef.current, p)
+    if (protection.isActive()) protection.draw(lastRef.current, p)
+    else stamp(lastRef.current, p)
     lastRef.current = p
   }
 
@@ -138,6 +166,7 @@ export default function FreeForm() {
     drawingRef.current = false
     lastRef.current = null
     activePointerRef.current = null
+    protection.end()
   }
 
   function clear() {
@@ -205,6 +234,11 @@ export default function FreeForm() {
 
           <SaveButton getCanvas={composeLayers} mode="free-form" />
 
+          <SaveLineArtMenu
+            mode="free-form"
+            getLineCanvas={() => lineCanvasRef.current}
+          />
+
           <a href="#/gallery">
             <Button variant="outline">
               <LayoutGrid />
@@ -245,7 +279,11 @@ export default function FreeForm() {
         </main>
 
         {layer === "color" && (
-          <ColorPalette value={color} onChange={setColor} />
+          <ColorPalette
+            value={color}
+            onChange={setColor}
+            footer={<ProtectionMenu protect={protect} onChange={setProtect} />}
+          />
         )}
       </div>
     </div>

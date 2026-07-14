@@ -1,20 +1,24 @@
-import { useEffect, useRef, useState } from "react"
-import {
-  Check,
-  FilePlus,
-  LayoutGrid,
-  MoreHorizontal,
-  RotateCcw,
-  Shield,
-  ShieldOff,
-  X,
-} from "lucide-react"
+import { useEffect, useRef, useState, useSyncExternalStore } from "react"
+import { FilePlus, LayoutGrid, RotateCcw, Trash2, X } from "lucide-react"
 
 import { ColorPalette } from "@/components/ColorPalette"
 import { ModeSwitcher } from "@/components/ModeSwitcher"
+import { ProtectionMenu } from "@/components/ProtectionMenu"
 import { SaveButton } from "@/components/SaveButton"
 import { Button } from "@/components/ui/button"
-import { cn } from "@/lib/utils"
+import {
+  EDGE_BLEED,
+  bleedUnderLines,
+  buildClipCanvas,
+  computeRegion,
+  wallMaskFromPixels,
+} from "@/lib/boundaryProtection"
+import {
+  deleteCustomLineArt,
+  getCustomLineartsSnapshot,
+  modeLabel,
+  subscribeCustomLinearts,
+} from "@/lib/customLinearts"
 import { DEFAULT_PALETTE } from "@/lib/palettes"
 import { LINEARTS, type LineArt as LineArtDef } from "@/lib/linearts"
 import { useStrokeWidth } from "@/lib/useStrokeWidth"
@@ -23,21 +27,8 @@ type Point = { x: number; y: number }
 
 // The brush always paints freehand. "Boundary protection" (on by default)
 // clips each stroke to the closed line-art region it starts in, so paint can't
-// spill across the lines; turning it off gives an unrestricted brush.
-
-// The line art is pure black on a transparent background, but rasterizing it
-// antialiases every edge into a short ramp of partial-alpha pixels. A pixel
-// counts as a "wall" (a boundary a protected stroke can't cross) once its alpha
-// clears this threshold — low enough that the barrier stays continuous across
-// even thin lines.
-const WALL_ALPHA = 60
-
-// A protected stroke bleeds this many device pixels *under* the line edges,
-// expanding only across wall pixels (never into a neighbouring region's
-// interior). This paints beneath the semi-transparent antialiased fringe of the
-// line overlay so no white slivers are left uncoloured along the lines. Kept
-// small so it can't bridge a thin line into the region on its far side.
-const EDGE_BLEED = 3
+// spill across the lines; turning it off gives an unrestricted brush. The
+// region math lives in @/lib/boundaryProtection (shared with the other modes).
 
 // --- Archived: bucket flood-fill helper, kept for possible reuse ---
 // #rrggbb / #rgb -> [r, g, b]. Palette colors are always hex.
@@ -83,8 +74,10 @@ export default function LineArt() {
   )
 }
 
-// Modal gallery of the bundled line arts. Picking one loads it into the coloring
-// view; closing it (backdrop, Escape, or the close button) resumes the drawing.
+// Modal gallery of line arts. "Your sketches" (saved from the other modes, kept
+// locally) come first, each tagged with the mode it was drawn in and removable;
+// the bundled pages follow. Picking one loads it into the coloring view; closing
+// it (backdrop, Escape, or the close button) resumes the drawing.
 function LibraryModal({
   onPick,
   onClose,
@@ -92,6 +85,11 @@ function LibraryModal({
   onPick: (art: LineArtDef) => void
   onClose: () => void
 }) {
+  const custom = useSyncExternalStore(
+    subscribeCustomLinearts,
+    getCustomLineartsSnapshot
+  )
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose()
     window.addEventListener("keydown", onKey)
@@ -118,105 +116,92 @@ function LibraryModal({
           </Button>
         </div>
 
-        <div className="min-h-0 flex-1 overflow-auto p-4 sm:p-5">
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-4">
-            {LINEARTS.map((art) => (
-              <button
-                key={art.id}
-                type="button"
-                onClick={() => onPick(art)}
-                className="group overflow-hidden rounded-xl border bg-white shadow-sm transition hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-foreground focus-visible:ring-offset-2"
-              >
-                <div className="aspect-[3/4] w-full">
-                  <img
-                    src={art.src}
-                    alt={art.label}
-                    loading="lazy"
-                    draggable={false}
-                    className="h-full w-full object-contain p-3 transition-transform group-hover:scale-[1.03]"
-                  />
-                </div>
-              </button>
-            ))}
-          </div>
+        <div className="min-h-0 flex-1 space-y-5 overflow-auto p-4 sm:p-5">
+          {custom.length > 0 && (
+            <section className="space-y-2">
+              <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Your sketches
+              </h3>
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-4">
+                {custom.map((art) => (
+                  <div
+                    key={art.id}
+                    className="group relative overflow-hidden rounded-xl border bg-white shadow-sm transition hover:shadow-md"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => onPick({ id: `custom:${art.id}`, label: art.label, src: art.src })}
+                      className="block w-full focus:outline-none focus-visible:ring-2 focus-visible:ring-foreground focus-visible:ring-offset-2"
+                    >
+                      <div className="aspect-[3/4] w-full">
+                        <img
+                          src={art.src}
+                          alt={art.label}
+                          draggable={false}
+                          className="h-full w-full object-contain p-3 transition-transform group-hover:scale-[1.03]"
+                        />
+                      </div>
+                    </button>
+                    {/* Mode badge — the mode this sketch was drawn in. */}
+                    <span className="pointer-events-none absolute left-2 top-2 rounded-full bg-black/70 px-2 py-0.5 text-[10px] font-medium text-white">
+                      {modeLabel(art.mode)}
+                    </span>
+                    <button
+                      type="button"
+                      aria-label={`Delete ${art.label}`}
+                      onClick={() => deleteCustomLineArt(art.id)}
+                      className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full bg-white/90 text-muted-foreground opacity-0 shadow-sm transition hover:text-red-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-foreground group-hover:opacity-100"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+
+          <section className="space-y-2">
+            <div className="space-y-0.5">
+              {custom.length > 0 && (
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  Coloring pages
+                </h3>
+              )}
+              <p className="text-xs text-muted-foreground">
+                Coloring pages courtesy of{" "}
+                <a
+                  href="https://yaycoloringpages.com"
+                  target="_blank"
+                  rel="noreferrer noopener"
+                  className="font-medium underline underline-offset-2 hover:text-foreground"
+                >
+                  yaycoloringpages.com
+                </a>
+              </p>
+            </div>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-4">
+              {LINEARTS.map((art) => (
+                <button
+                  key={art.id}
+                  type="button"
+                  onClick={() => onPick(art)}
+                  className="group overflow-hidden rounded-xl border bg-white shadow-sm transition hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-foreground focus-visible:ring-offset-2"
+                >
+                  <div className="aspect-[3/4] w-full">
+                    <img
+                      src={art.src}
+                      alt={art.label}
+                      loading="lazy"
+                      draggable={false}
+                      className="h-full w-full object-contain p-3 transition-transform group-hover:scale-[1.03]"
+                    />
+                  </div>
+                </button>
+              ))}
+            </div>
+          </section>
         </div>
       </div>
-    </div>
-  )
-}
-
-// Overflow "…" menu shown at the bottom of the palette bar. Holds the
-// boundary-protection toggle: when on (the default), brush strokes stay inside
-// the closed line-art region they start in; when off, the brush paints freely.
-function ProtectionMenu({
-  protect,
-  onChange,
-}: {
-  protect: boolean
-  onChange: (protect: boolean) => void
-}) {
-  const [open, setOpen] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    if (!open) return
-    const onPointerDown = (e: PointerEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
-    }
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false)
-    window.addEventListener("pointerdown", onPointerDown)
-    window.addEventListener("keydown", onKey)
-    return () => {
-      window.removeEventListener("pointerdown", onPointerDown)
-      window.removeEventListener("keydown", onKey)
-    }
-  }, [open])
-
-  return (
-    <div ref={ref} className="relative">
-      <button
-        type="button"
-        aria-haspopup="menu"
-        aria-expanded={open}
-        aria-label="More options"
-        onClick={() => setOpen((o) => !o)}
-        // Padding + inner cell mirror the palette pill so this button matches
-        // its width (a swatch-sized cell inside a p-2 border).
-        className="flex items-center justify-center rounded-full border bg-background p-2 text-foreground shadow-sm transition-colors hover:bg-muted"
-      >
-        <span className="flex h-8 w-8 items-center justify-center sm:h-9 sm:w-9">
-          <MoreHorizontal className="h-4 w-4" />
-        </span>
-      </button>
-
-      {open && (
-        <div
-          role="menu"
-          className={cn(
-            "absolute z-20 w-56 rounded-lg border bg-card p-1 shadow-lg",
-            // Portrait (bar at bottom): open upward from the right edge.
-            "bottom-full right-0 mb-2",
-            // Landscape (bar on the left): open to the right, bottom-aligned.
-            "landscape:inset-auto landscape:bottom-0 landscape:left-full landscape:right-auto landscape:mb-0 landscape:ml-2"
-          )}
-        >
-          <button
-            type="button"
-            role="menuitemcheckbox"
-            aria-checked={protect}
-            onClick={() => onChange(!protect)}
-            className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-sm text-foreground transition-colors hover:bg-muted"
-          >
-            {protect ? (
-              <Shield className="h-4 w-4 shrink-0" />
-            ) : (
-              <ShieldOff className="h-4 w-4 shrink-0 opacity-60" />
-            )}
-            <span className="flex-1">Stay inside the lines</span>
-            {protect && <Check className="h-4 w-4 shrink-0" />}
-          </button>
-        </div>
-      )}
     </div>
   )
 }
@@ -373,11 +358,8 @@ function LineArtColoring({
     const octx = off.getContext("2d", { willReadFrequently: true })!
     octx.drawImage(img, 0, 0, w, h)
     const px = octx.getImageData(0, 0, w, h).data
-    const data = new Uint8Array(w * h)
-    for (let i = 0; i < data.length; i++)
-      if (px[i * 4 + 3] >= WALL_ALPHA) data[i] = 1
 
-    const mask = { w, h, data }
+    const mask = { w, h, data: wallMaskFromPixels(px, w, h) }
     wallMaskRef.current = mask
     return mask
   }
@@ -391,75 +373,6 @@ function LineArtColoring({
     const sy = Math.floor((cssY / rect.height) * h)
     if (sx < 0 || sy < 0 || sx >= w || sy >= h) return null
     return sy * w + sx
-  }
-
-  // Flood the closed region containing `start` (a device-pixel index), bounded
-  // by line-art walls. Returns a per-pixel mask (1 = in region), or null if
-  // `start` sits on a wall.
-  function computeRegion(mask: Uint8Array, w: number, h: number, start: number) {
-    if (mask[start]) return null
-    const region = new Uint8Array(w * h)
-    const stack = [start]
-    region[start] = 1
-    while (stack.length) {
-      const i = stack.pop()!
-      const x = i % w
-      const left = i - 1
-      const right = i + 1
-      const up = i - w
-      const down = i + w
-      if (x > 0 && !region[left] && !mask[left]) (region[left] = 1), stack.push(left)
-      if (x < w - 1 && !region[right] && !mask[right])
-        (region[right] = 1), stack.push(right)
-      if (up >= 0 && !region[up] && !mask[up]) (region[up] = 1), stack.push(up)
-      if (down < w * h && !region[down] && !mask[down])
-        (region[down] = 1), stack.push(down)
-    }
-    return region
-  }
-
-  // Grow `region` outward by `bleed` pixels, but only across wall pixels — so
-  // paint slides under the antialiased line edge yet can never reach the
-  // fillable interior of an adjacent region. Returns the expanded mask.
-  function bleedUnderLines(
-    region: Uint8Array,
-    wall: Uint8Array,
-    w: number,
-    h: number,
-    bleed: number
-  ) {
-    const n = w * h
-    const out = region.slice()
-    // Seed the frontier with region pixels that touch a wall.
-    let frontier: number[] = []
-    for (let i = 0; i < n; i++) {
-      if (!region[i]) continue
-      const x = i % w
-      if (
-        (x > 0 && wall[i - 1]) ||
-        (x < w - 1 && wall[i + 1]) ||
-        (i - w >= 0 && wall[i - w]) ||
-        (i + w < n && wall[i + w])
-      )
-        frontier.push(i)
-    }
-    for (let step = 0; step < bleed && frontier.length; step++) {
-      const next: number[] = []
-      for (const i of frontier) {
-        const x = i % w
-        const left = i - 1
-        const right = i + 1
-        const up = i - w
-        const down = i + w
-        if (x > 0 && !out[left] && wall[left]) (out[left] = 1), next.push(left)
-        if (x < w - 1 && !out[right] && wall[right])
-          (out[right] = 1), next.push(right)
-        if (up >= 0 && !out[up] && wall[up]) (out[up] = 1), next.push(up)
-        if (down < n && !out[down] && wall[down]) (out[down] = 1), next.push(down)
-      }
-      frontier = next
-    }
-    return out
   }
 
   // --- Archived: bucket tool. Fills the closed region under (cssX, cssY) with
@@ -508,16 +421,7 @@ function LineArtColoring({
 
     // A clip layer that is opaque inside the region and transparent outside;
     // intersecting the stroke with it (destination-in) keeps paint in bounds.
-    const clip = document.createElement("canvas")
-    clip.width = w
-    clip.height = h
-    const clipImg = new ImageData(w, h)
-    const cd = clipImg.data
-    for (let i = 0; i < clipMask.length; i++)
-      if (clipMask[i]) {
-        cd[i * 4] = cd[i * 4 + 1] = cd[i * 4 + 2] = cd[i * 4 + 3] = 255
-      }
-    clip.getContext("2d")!.putImageData(clipImg, 0, 0)
+    const clip = buildClipCanvas(clipMask, w, h)
 
     // Snapshot the color layer so each move can recomposite base + stroke
     // rather than accumulate.

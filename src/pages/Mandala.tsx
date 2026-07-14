@@ -3,10 +3,13 @@ import { LayoutGrid, RotateCcw } from "lucide-react"
 
 import { ColorPalette } from "@/components/ColorPalette"
 import { ModeSwitcher } from "@/components/ModeSwitcher"
+import { ProtectionMenu } from "@/components/ProtectionMenu"
 import { SaveButton } from "@/components/SaveButton"
+import { SaveLineArtMenu } from "@/components/SaveLineArtMenu"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { DEFAULT_PALETTE } from "@/lib/palettes"
+import { useBoundaryProtection } from "@/lib/useBoundaryProtection"
 import { useStrokeWidth } from "@/lib/useStrokeWidth"
 
 type Point = { x: number; y: number }
@@ -43,11 +46,15 @@ export default function Mandala() {
   const [side, setSide] = useState(0)
   const [size, setSize] = useState({ w: 0, h: 0 })
   const [sectors, setSectors] = useState(randomSectors)
+  // Boundary protection keeps color strokes inside the lines; on by default.
+  const [protect, setProtect] = useState(true)
+  const protectRef = useRef(true)
 
   // Line art is always black; the color layer uses the picked color.
   colorRef.current = layer === "line" ? LINE_COLOR : color
   layerRef.current = layer
   sectorsRef.current = sectors
+  protectRef.current = protect
 
   // Fit the circular canvas to the largest square inside its container.
   useEffect(() => {
@@ -109,11 +116,8 @@ export default function Mandala() {
     setSize({ w: rect.width, h: rect.height })
   }, [side])
 
-  // Draw one segment on the active layer, replicated with dihedral symmetry.
-  function stamp(a: Point, b: Point) {
-    const ctx =
-      layerRef.current === "line" ? lineCtxRef.current : colorCtxRef.current
-    if (!ctx) return
+  // Draw one segment onto a given context, replicated with dihedral symmetry.
+  function stampOn(ctx: CanvasRenderingContext2D, a: Point, b: Point) {
     const { w, h } = sizeRef.current
     const cx = w / 2
     const cy = h / 2
@@ -149,6 +153,40 @@ export default function Mandala() {
     }
   }
 
+  // Draw on the active layer's live canvas.
+  function stamp(a: Point, b: Point) {
+    const ctx =
+      layerRef.current === "line" ? lineCtxRef.current : colorCtxRef.current
+    if (ctx) stampOn(ctx, a, b)
+  }
+
+  // A stroke lands rotated into each sector (matching stampOn's rotations).
+  const seedPoints = (p: Point) => {
+    const { w, h } = sizeRef.current
+    const cx = w / 2
+    const cy = h / 2
+    const rx = p.x - cx
+    const ry = p.y - cy
+    const sectors = sectorsRef.current
+    const step = (Math.PI * 2) / sectors
+    const pts: Point[] = []
+    for (let i = 0; i < sectors; i++) {
+      const c = Math.cos(step * i)
+      const s = Math.sin(step * i)
+      pts.push({ x: cx + rx * c - ry * s, y: cy + rx * s + ry * c })
+    }
+    return pts
+  }
+
+  // Confines color strokes to the closed region of the line layer they start in.
+  const protection = useBoundaryProtection({
+    colorCanvasRef,
+    colorCtxRef,
+    lineCanvasRef,
+    stampOn,
+    seedPoints,
+  })
+
   function pointFromEvent(e: React.PointerEvent<HTMLCanvasElement>): Point {
     const rect = lineCanvasRef.current!.getBoundingClientRect()
     return { x: e.clientX - rect.left, y: e.clientY - rect.top }
@@ -157,19 +195,23 @@ export default function Mandala() {
   function onPointerDown(e: React.PointerEvent<HTMLCanvasElement>) {
     // Single-touch only: ignore extra fingers while one is already drawing.
     if (activePointerRef.current !== null) return
+    const p = pointFromEvent(e)
+    const confined =
+      layerRef.current === "color" && protectRef.current && protection.begin(p)
     activePointerRef.current = e.pointerId
     e.currentTarget.setPointerCapture(e.pointerId)
     drawingRef.current = true
-    const p = pointFromEvent(e)
     lastRef.current = p
-    stamp(p, p)
+    if (confined) protection.draw(p, p)
+    else stamp(p, p)
   }
 
   function onPointerMove(e: React.PointerEvent<HTMLCanvasElement>) {
     if (e.pointerId !== activePointerRef.current) return
     if (!drawingRef.current || !lastRef.current) return
     const p = pointFromEvent(e)
-    stamp(lastRef.current, p)
+    if (protection.isActive()) protection.draw(lastRef.current, p)
+    else stamp(lastRef.current, p)
     lastRef.current = p
   }
 
@@ -178,6 +220,7 @@ export default function Mandala() {
     drawingRef.current = false
     lastRef.current = null
     activePointerRef.current = null
+    protection.end()
   }
 
   function clear() {
@@ -258,6 +301,11 @@ export default function Mandala() {
 
           <SaveButton getCanvas={composeLayers} mode="mandala" />
 
+          <SaveLineArtMenu
+            mode="mandala"
+            getLineCanvas={() => lineCanvasRef.current}
+          />
+
           <a href="#/gallery">
             <Button variant="outline">
               <LayoutGrid />
@@ -315,7 +363,11 @@ export default function Mandala() {
         </main>
 
         {layer === "color" && (
-          <ColorPalette value={color} onChange={setColor} />
+          <ColorPalette
+            value={color}
+            onChange={setColor}
+            footer={<ProtectionMenu protect={protect} onChange={setProtect} />}
+          />
         )}
       </div>
     </div>

@@ -3,10 +3,13 @@ import { LayoutGrid, RotateCcw } from "lucide-react"
 
 import { ColorPalette } from "@/components/ColorPalette"
 import { ModeSwitcher } from "@/components/ModeSwitcher"
+import { ProtectionMenu } from "@/components/ProtectionMenu"
 import { SaveButton } from "@/components/SaveButton"
+import { SaveLineArtMenu } from "@/components/SaveLineArtMenu"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { DEFAULT_PALETTE } from "@/lib/palettes"
+import { useBoundaryProtection } from "@/lib/useBoundaryProtection"
 import { useStrokeWidth } from "@/lib/useStrokeWidth"
 
 type Point = { x: number; y: number }
@@ -37,10 +40,14 @@ export default function Tiles() {
   const [layer, setLayer] = useState<Layer>("line")
   const [side, setSide] = useState(0)
   const [size, setSize] = useState({ w: 0, h: 0 })
+  // Boundary protection keeps color strokes inside the lines; on by default.
+  const [protect, setProtect] = useState(true)
+  const protectRef = useRef(true)
 
   // Line art is always black; the color layer uses the picked color.
   colorRef.current = layer === "line" ? LINE_COLOR : color
   layerRef.current = layer
+  protectRef.current = protect
 
   // Fit the square canvas to the largest square inside its container.
   useEffect(() => {
@@ -102,12 +109,9 @@ export default function Tiles() {
     setSize({ w: rect.width, h: rect.height })
   }, [side])
 
-  // Draw one segment on the active layer, replicated into every tile of the
+  // Draw one segment onto a given context, replicated into every tile of the
   // grid. The stroke wraps toroidally so the pattern stays seamless.
-  function stamp(a: Point, b: Point) {
-    const ctx =
-      layerRef.current === "line" ? lineCtxRef.current : colorCtxRef.current
-    if (!ctx) return
+  function stampOn(ctx: CanvasRenderingContext2D, a: Point, b: Point) {
     const { w, h } = sizeRef.current
     const cw = w / GRID
     const ch = h / GRID
@@ -131,6 +135,41 @@ export default function Tiles() {
     }
   }
 
+  // Draw on the active layer's live canvas.
+  function stamp(a: Point, b: Point) {
+    const ctx =
+      layerRef.current === "line" ? lineCtxRef.current : colorCtxRef.current
+    if (ctx) stampOn(ctx, a, b)
+  }
+
+  // A stroke lands at the same position within every tile (matching stampOn).
+  const seedPoints = (p: Point) => {
+    const { w, h } = sizeRef.current
+    const cw = w / GRID
+    const ch = h / GRID
+    const baseCol = Math.floor(p.x / cw)
+    const baseRow = Math.floor(p.y / ch)
+    const pts: Point[] = []
+    for (let row = 0; row < GRID; row++) {
+      for (let col = 0; col < GRID; col++) {
+        pts.push({
+          x: p.x + (col - baseCol) * cw,
+          y: p.y + (row - baseRow) * ch,
+        })
+      }
+    }
+    return pts
+  }
+
+  // Confines color strokes to the closed region of the line layer they start in.
+  const protection = useBoundaryProtection({
+    colorCanvasRef,
+    colorCtxRef,
+    lineCanvasRef,
+    stampOn,
+    seedPoints,
+  })
+
   function pointFromEvent(e: React.PointerEvent<HTMLCanvasElement>): Point {
     const rect = lineCanvasRef.current!.getBoundingClientRect()
     return { x: e.clientX - rect.left, y: e.clientY - rect.top }
@@ -139,19 +178,23 @@ export default function Tiles() {
   function onPointerDown(e: React.PointerEvent<HTMLCanvasElement>) {
     // Single-touch only: ignore extra fingers while one is already drawing.
     if (activePointerRef.current !== null) return
+    const p = pointFromEvent(e)
+    const confined =
+      layerRef.current === "color" && protectRef.current && protection.begin(p)
     activePointerRef.current = e.pointerId
     e.currentTarget.setPointerCapture(e.pointerId)
     drawingRef.current = true
-    const p = pointFromEvent(e)
     lastRef.current = p
-    stamp(p, p)
+    if (confined) protection.draw(p, p)
+    else stamp(p, p)
   }
 
   function onPointerMove(e: React.PointerEvent<HTMLCanvasElement>) {
     if (e.pointerId !== activePointerRef.current) return
     if (!drawingRef.current || !lastRef.current) return
     const p = pointFromEvent(e)
-    stamp(lastRef.current, p)
+    if (protection.isActive()) protection.draw(lastRef.current, p)
+    else stamp(lastRef.current, p)
     lastRef.current = p
   }
 
@@ -160,6 +203,7 @@ export default function Tiles() {
     drawingRef.current = false
     lastRef.current = null
     activePointerRef.current = null
+    protection.end()
   }
 
   function clear() {
@@ -238,6 +282,11 @@ export default function Tiles() {
 
           <SaveButton getCanvas={composeLayers} mode="tiles" />
 
+          <SaveLineArtMenu
+            mode="tiles"
+            getLineCanvas={() => lineCanvasRef.current}
+          />
+
           <a href="#/gallery">
             <Button variant="outline">
               <LayoutGrid />
@@ -295,7 +344,11 @@ export default function Tiles() {
         </main>
 
         {layer === "color" && (
-          <ColorPalette value={color} onChange={setColor} />
+          <ColorPalette
+            value={color}
+            onChange={setColor}
+            footer={<ProtectionMenu protect={protect} onChange={setProtect} />}
+          />
         )}
       </div>
     </div>
