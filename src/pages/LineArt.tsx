@@ -8,10 +8,13 @@ import { SaveButton } from "@/components/SaveButton"
 import { Button } from "@/components/ui/button"
 import {
   EDGE_BLEED,
+  beginClippedStroke,
   bleedUnderLines,
   buildClipCanvas,
   computeRegion,
+  stampBbox,
   wallMaskFromPixels,
+  type ClippedStroke,
 } from "@/lib/boundaryProtection"
 import {
   deleteCustomLineArt,
@@ -231,15 +234,10 @@ function LineArtColoring({
   const wallMaskRef = useRef<{ w: number; h: number; data: Uint8Array } | null>(
     null
   )
-  // Active protected stroke: the region it's clamped to, plus the offscreen
-  // layers used to keep painting inside that region. Null when not drawing a
-  // protected stroke (either idle, or protection is off).
-  const protectedStrokeRef = useRef<{
-    clip: HTMLCanvasElement // opaque inside the region, transparent outside
-    base: HTMLCanvasElement // color layer as it was when the stroke began
-    stroke: HTMLCanvasElement // the current stroke, accumulated and clipped
-    strokeCtx: CanvasRenderingContext2D
-  } | null>(null)
+  // Active protected stroke: paints each move's segment clipped to its region,
+  // touching only the segment's bounding box (see beginClippedStroke). Null when
+  // not drawing a protected stroke (either idle, or protection is off).
+  const protectedStrokeRef = useRef<ClippedStroke | null>(null)
 
   const [color, setColor] = useState(DEFAULT_PALETTE.colors[0])
   // Boundary protection keeps strokes inside the lines; on by default.
@@ -423,59 +421,40 @@ function LineArtColoring({
     // intersecting the stroke with it (destination-in) keeps paint in bounds.
     const clip = buildClipCanvas(clipMask, w, h)
 
-    // Snapshot the color layer so each move can recomposite base + stroke
-    // rather than accumulate.
-    const base = document.createElement("canvas")
-    base.width = w
-    base.height = h
-    base.getContext("2d")!.drawImage(canvas, 0, 0)
-
-    const stroke = document.createElement("canvas")
-    stroke.width = w
-    stroke.height = h
-    const strokeCtx = stroke.getContext("2d")!
+    const ctx = colorCtxRef.current
+    if (!ctx) return false
     const dpr = window.devicePixelRatio || 1
-    strokeCtx.setTransform(dpr, 0, 0, dpr, 0, 0)
-    strokeCtx.lineCap = "round"
-    strokeCtx.lineJoin = "round"
-
-    protectedStrokeRef.current = { clip, base, stroke, strokeCtx }
+    protectedStrokeRef.current = beginClippedStroke(ctx, clip, dpr)
     return true
   }
 
-  // Extend the active protected stroke from a→b and recomposite it onto the
-  // color layer, clipped to the stroke's region.
+  // Extend the active protected stroke from a→b, painting the new segment onto
+  // the color layer clipped to the stroke's region (bounded to its bbox).
   function drawProtectedSegment(a: Point, b: Point) {
     const c = protectedStrokeRef.current
     const canvas = colorCanvasRef.current
-    const ctx = colorCtxRef.current
-    if (!c || !canvas || !ctx) return
+    if (!c || !canvas) return
     const w = canvas.width
     const h = canvas.height
+    const rect = canvas.getBoundingClientRect()
+    if (rect.width === 0 || rect.height === 0) return
 
-    // Accumulate the new segment onto the stroke layer...
-    c.strokeCtx.strokeStyle = colorRef.current
-    c.strokeCtx.lineWidth = strokeRef.current
-    c.strokeCtx.beginPath()
-    c.strokeCtx.moveTo(a.x, a.y)
-    c.strokeCtx.lineTo(b.x, b.y)
-    c.strokeCtx.stroke()
+    const bbox = stampBbox(
+      [a, b],
+      w / rect.width,
+      h / rect.height,
+      strokeRef.current
+    )
+    if (!bbox) return
 
-    // ...then clip the whole stroke to the region.
-    c.strokeCtx.save()
-    c.strokeCtx.setTransform(1, 0, 0, 1, 0, 0)
-    c.strokeCtx.globalCompositeOperation = "destination-in"
-    c.strokeCtx.drawImage(c.clip, 0, 0)
-    c.strokeCtx.globalCompositeOperation = "source-over"
-    c.strokeCtx.restore()
-
-    // Repaint the color layer: original content, then the clipped stroke.
-    ctx.save()
-    ctx.setTransform(1, 0, 0, 1, 0, 0)
-    ctx.clearRect(0, 0, w, h)
-    ctx.drawImage(c.base, 0, 0)
-    ctx.drawImage(c.stroke, 0, 0)
-    ctx.restore()
+    c.paint((ctx) => {
+      ctx.strokeStyle = colorRef.current
+      ctx.lineWidth = strokeRef.current
+      ctx.beginPath()
+      ctx.moveTo(a.x, a.y)
+      ctx.lineTo(b.x, b.y)
+      ctx.stroke()
+    }, bbox)
   }
 
   function onPointerDown(e: React.PointerEvent<HTMLCanvasElement>) {

@@ -2,10 +2,13 @@ import { useRef, type MutableRefObject } from "react"
 
 import {
   EDGE_BLEED,
+  beginClippedStroke,
   bleedUnderLines,
   buildClipCanvas,
   computeRegion,
+  stampBbox,
   wallMaskFromCanvas,
+  type ClippedStroke,
 } from "./boundaryProtection"
 
 type Point = { x: number; y: number }
@@ -20,6 +23,8 @@ type Options = {
   // The start point replicated to every place a stamp lands. Its regions are
   // unioned so each symmetric stamp is confined to the area it starts in.
   seedPoints: (p: Point) => Point[]
+  // The current brush width in CSS pixels, used to bound each move's redraw.
+  strokeWidth: () => number
 }
 
 // Confine freehand color strokes to the closed region(s) of the line layer they
@@ -33,13 +38,12 @@ export function useBoundaryProtection({
   lineCanvasRef,
   stampOn,
   seedPoints,
+  strokeWidth,
 }: Options) {
-  const active = useRef<{
-    clip: HTMLCanvasElement // opaque inside the region(s), transparent outside
-    base: HTMLCanvasElement // color layer as it was when the stroke began
-    stroke: HTMLCanvasElement // the current stroke, accumulated and clipped
-    strokeCtx: CanvasRenderingContext2D
-  } | null>(null)
+  // The active protected stroke: it paints each move's stamps clipped to the
+  // region and touches only their bounding box (see beginClippedStroke). Null
+  // when not drawing a protected stroke.
+  const active = useRef<ClippedStroke | null>(null)
 
   function begin(start: Point): boolean {
     const colorCanvas = colorCanvasRef.current
@@ -74,50 +78,34 @@ export function useBoundaryProtection({
     const clipMask = bleedUnderLines(union, mask.data, w, h, EDGE_BLEED)
     const clip = buildClipCanvas(clipMask, w, h)
 
-    const base = document.createElement("canvas")
-    base.width = w
-    base.height = h
-    base.getContext("2d")!.drawImage(colorCanvas, 0, 0)
-
-    const stroke = document.createElement("canvas")
-    stroke.width = w
-    stroke.height = h
-    const strokeCtx = stroke.getContext("2d")!
+    const ctx = colorCtxRef.current
+    if (!ctx) return false
     const dpr = window.devicePixelRatio || 1
-    strokeCtx.setTransform(dpr, 0, 0, dpr, 0, 0)
-    strokeCtx.lineCap = "round"
-    strokeCtx.lineJoin = "round"
-
-    active.current = { clip, base, stroke, strokeCtx }
+    active.current = beginClippedStroke(ctx, clip, dpr)
     return true
   }
 
   function draw(a: Point, b: Point) {
     const c = active.current
     const colorCanvas = colorCanvasRef.current
-    const ctx = colorCtxRef.current
-    if (!c || !colorCanvas || !ctx) return
+    if (!c || !colorCanvas) return
     const w = colorCanvas.width
     const h = colorCanvas.height
+    const rect = colorCanvas.getBoundingClientRect()
+    if (rect.width === 0 || rect.height === 0) return
 
-    // Accumulate the new segment(s) onto the stroke layer...
-    stampOn(c.strokeCtx, a, b)
+    // Every place this move's stamps land — its bounding box bounds the redraw.
+    const sx = w / rect.width
+    const sy = h / rect.height
+    const bbox = stampBbox(
+      [...seedPoints(a), ...seedPoints(b)],
+      sx,
+      sy,
+      strokeWidth()
+    )
+    if (!bbox) return
 
-    // ...then clip the whole stroke to the region(s).
-    c.strokeCtx.save()
-    c.strokeCtx.setTransform(1, 0, 0, 1, 0, 0)
-    c.strokeCtx.globalCompositeOperation = "destination-in"
-    c.strokeCtx.drawImage(c.clip, 0, 0)
-    c.strokeCtx.globalCompositeOperation = "source-over"
-    c.strokeCtx.restore()
-
-    // Repaint the color layer: original content, then the clipped stroke.
-    ctx.save()
-    ctx.setTransform(1, 0, 0, 1, 0, 0)
-    ctx.clearRect(0, 0, w, h)
-    ctx.drawImage(c.base, 0, 0)
-    ctx.drawImage(c.stroke, 0, 0)
-    ctx.restore()
+    c.paint((ctx) => stampOn(ctx, a, b), bbox)
   }
 
   function end() {

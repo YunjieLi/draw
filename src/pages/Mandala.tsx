@@ -185,6 +185,7 @@ export default function Mandala() {
     lineCanvasRef,
     stampOn,
     seedPoints,
+    strokeWidth: () => strokeRef.current,
   })
 
   function pointFromEvent(e: React.PointerEvent<HTMLCanvasElement>): Point {

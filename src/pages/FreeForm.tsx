@@ -129,6 +129,7 @@ export default function FreeForm() {
     lineCanvasRef,
     stampOn,
     seedPoints,
+    strokeWidth: () => strokeRef.current,
   })
 
   function pointFromEvent(e: React.PointerEvent<HTMLCanvasElement>): Point {

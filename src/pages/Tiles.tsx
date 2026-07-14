@@ -168,6 +168,7 @@ export default function Tiles() {
     lineCanvasRef,
     stampOn,
     seedPoints,
+    strokeWidth: () => strokeRef.current,
   })
 
   function pointFromEvent(e: React.PointerEvent<HTMLCanvasElement>): Point {
