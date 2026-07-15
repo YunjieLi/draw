@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react"
-import { ChevronDown } from "lucide-react"
+import { ChevronRight, ChevronUp } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 import { DEFAULT_PALETTE_ID, PALETTES } from "@/lib/palettes"
@@ -7,6 +7,9 @@ import { DEFAULT_PALETTE_ID, PALETTES } from "@/lib/palettes"
 type Props = {
   value: string
   onChange: (color: string) => void
+  // Optional control rendered at the leading/top edge of the bar (before the
+  // palette pill) — e.g. the "pick a template" button.
+  leading?: ReactNode
   // Optional control rendered at the trailing/bottom edge of the bar (after the
   // palette pill) — e.g. an overflow "…" menu.
   footer?: ReactNode
@@ -17,7 +20,7 @@ type Props = {
 // bar on the left on landscape ones. The swatches and the palette-picker entry
 // live inside a single rounded "pill"; the picker chevron opens a popover for
 // switching between named palettes (see @/lib/palettes).
-export function ColorPalette({ value, onChange, footer }: Props) {
+export function ColorPalette({ value, onChange, leading, footer }: Props) {
   const [paletteId, setPaletteId] = useState(DEFAULT_PALETTE_ID)
   const [open, setOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
@@ -58,6 +61,8 @@ export function ColorPalette({ value, onChange, footer }: Props) {
         "landscape:order-first landscape:flex-col"
       )}
     >
+      {leading}
+
       {/* Single pill wrapping the swatches and the palette-picker entry. */}
       <div ref={menuRef} className="relative">
         <div
@@ -67,6 +72,21 @@ export function ColorPalette({ value, onChange, footer }: Props) {
             "landscape:flex-col"
           )}
         >
+          {/* Palette-picker entry point — opens the named-palette popover. The
+              caret points the way the popover opens: up in portrait (it opens
+              above), right in landscape (it opens to the side). */}
+          <button
+            type="button"
+            onClick={() => setOpen((o) => !o)}
+            aria-haspopup="listbox"
+            aria-expanded={open}
+            aria-label="Choose color palette"
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-foreground/70 transition-colors hover:bg-muted hover:text-foreground sm:h-9 sm:w-9"
+          >
+            <ChevronUp className="h-4 w-4 landscape:hidden" />
+            <ChevronRight className="hidden h-4 w-4 landscape:block" />
+          </button>
+
           {palette.colors.map((c) => (
             <button
               key={c}
@@ -82,18 +102,6 @@ export function ColorPalette({ value, onChange, footer }: Props) {
               style={{ backgroundColor: c }}
             />
           ))}
-
-          {/* Palette-picker entry point — opens the named-palette popover. */}
-          <button
-            type="button"
-            onClick={() => setOpen((o) => !o)}
-            aria-haspopup="listbox"
-            aria-expanded={open}
-            aria-label="Choose color palette"
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-foreground/70 transition-colors hover:bg-muted hover:text-foreground sm:h-9 sm:w-9"
-          >
-            <ChevronDown className="h-4 w-4" />
-          </button>
         </div>
 
         {open && (

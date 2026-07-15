@@ -1,50 +1,30 @@
 import { useEffect, useRef, useState } from "react"
 
 import { useBoundaryProtection } from "./useBoundaryProtection"
-import { useStrokeWidth } from "./useStrokeWidth"
 import { DEFAULT_PALETTE } from "./palettes"
+import type { DrawingMode } from "./drawings"
+import { consumeTemplateFor, subscribeTemplate } from "./templateStore"
+import { decodeTemplateImage } from "./templateImage"
+import {
+  defaultParams,
+  getSymmetry,
+  type Point,
+  type Size,
+  type SymParams,
+} from "./symmetry"
 
-export type Point = { x: number; y: number }
-export type Size = { w: number; h: number }
-export type Layer = "line" | "color"
-
-// The line-art layer is always drawn in black.
-const LINE_COLOR = "#18181b"
-
-// Context handed to a mode's stampOn: the live brush color and width, and the
-// canvas' CSS size (which symmetry math like mandala rotation or tile wrapping
-// needs). seedPoints only needs the size, passed directly.
-export type StampEnv = { color: string; strokeWidth: number; size: Size }
-
-export type DrawingCanvasOptions = {
-  // Draw one segment a→b, replicated with the mode's symmetry, onto `ctx`.
-  stampOn: (
-    ctx: CanvasRenderingContext2D,
-    a: Point,
-    b: Point,
-    env: StampEnv
-  ) => void
-  // Every place a point lands under that symmetry — its regions are unioned so
-  // boundary protection confines each symmetric stamp to the area it starts in.
-  seedPoints: (p: Point, size: Size) => Point[]
-  // Extra work after a clear (e.g. Mandala re-randomizes its sector count).
-  onClear?: () => void
-}
+// The color brush is a fixed, chunky width — good for filling regions.
+const COLOR_STROKE_WIDTH = 8
 
 export type DrawingCanvas = ReturnType<typeof useDrawingCanvas>
 
-// The shared engine behind the symmetry drawing modes (free-form, mandala,
-// mirror, tiles): two stacked canvases (color under a line layer), a fitted
-// square viewport, single-touch pointer handling, a line/color layer toggle,
-// and boundary protection. Modes supply only their symmetry (stampOn/seedPoints)
-// and render the returned bindings through <DrawingCanvas>.
-export function useDrawingCanvas({
-  stampOn,
-  seedPoints,
-  onClear,
-}: DrawingCanvasOptions) {
+// The shared engine behind the four coloring modes (free-form, mandala, mirror,
+// tiles). These are colour-only surfaces: a single paint canvas over an optional
+// read-only template (the line layer), coloured with the mode's symmetry and
+// boundary protection. Line-drawing lives in the template creator, not here.
+export function useDrawingCanvas({ mode }: { mode: DrawingMode }) {
   const containerRef = useRef<HTMLDivElement>(null)
-  // Two stacked canvases: color underneath, line art on top.
+  // Two stacked canvases: colour underneath, the (read-only) template on top.
   const colorCanvasRef = useRef<HTMLCanvasElement>(null)
   const lineCanvasRef = useRef<HTMLCanvasElement>(null)
   const colorCtxRef = useRef<CanvasRenderingContext2D | null>(null)
@@ -54,20 +34,22 @@ export function useDrawingCanvas({
   const lastRef = useRef<Point | null>(null)
   const activePointerRef = useRef<number | null>(null)
   const colorRef = useRef(DEFAULT_PALETTE.colors[0])
-  const layerRef = useRef<Layer>("line")
-  const strokeRef = useStrokeWidth()
+  const strokeRef = useRef<number>(COLOR_STROKE_WIDTH)
+  // A loaded template's decoded image. When set, the line layer shows it and it
+  // provides the boundaries the colour strokes stay inside.
+  const templateImgRef = useRef<HTMLImageElement | null>(null)
 
   const [color, setColor] = useState(DEFAULT_PALETTE.colors[0])
-  const [layer, setLayer] = useState<Layer>("line")
   const [side, setSide] = useState(0)
   const [size, setSize] = useState<Size>({ w: 0, h: 0 })
-  // Boundary protection keeps color strokes inside the lines; on by default.
+  // Boundary protection keeps colour strokes inside the lines; on by default.
   const [protect, setProtect] = useState(true)
   const protectRef = useRef(true)
+  // Symmetry settings — a loaded template's, otherwise the mode default.
+  const [params, setParams] = useState<SymParams>(defaultParams)
+  const [templateLoaded, setTemplateLoaded] = useState(false)
 
-  // Line art is always black; the color layer uses the picked color.
-  colorRef.current = layer === "line" ? LINE_COLOR : color
-  layerRef.current = layer
+  colorRef.current = color
   protectRef.current = protect
 
   // Fit the square canvas to the largest square inside its container.
@@ -130,28 +112,76 @@ export function useDrawingCanvas({
     setSize({ w: rect.width, h: rect.height })
   }, [side])
 
-  // Bind the mode's symmetry to the live brush state so boundary protection and
-  // the plain brush can call it with just (ctx, a, b) / (p).
-  const boundStampOn = (
-    ctx: CanvasRenderingContext2D,
-    a: Point,
-    b: Point
-  ) =>
-    stampOn(ctx, a, b, {
+  // Paint the loaded template onto the line canvas, contain-fit so its aspect
+  // ratio is preserved inside the (square/round) canvas. Rebuilt on resize.
+  function drawTemplate() {
+    const img = templateImgRef.current
+    const line = lineCanvasRef.current
+    const ctx = lineCtxRef.current
+    const { w, h } = sizeRef.current
+    if (!img || !line || !ctx || w === 0) return
+    ctx.save()
+    ctx.setTransform(1, 0, 0, 1, 0, 0)
+    ctx.clearRect(0, 0, line.width, line.height)
+    ctx.restore()
+    const ar = img.naturalWidth / img.naturalHeight || 1
+    let dw = w
+    let dh = w / ar
+    if (dh > h) {
+      dh = h
+      dw = h * ar
+    }
+    ctx.drawImage(img, (w - dw) / 2, (h - dh) / 2, dw, dh)
+    protection.invalidateWalls()
+  }
+
+  // Decode a template image and adopt its symmetry settings. The
+  // [templateLoaded, size] effect paints it once the canvas is ready.
+  function loadTemplate(src: string, templateParams: SymParams) {
+    decodeTemplateImage(src)
+      .then((img) => {
+        templateImgRef.current = img
+        setParams(templateParams)
+        setTemplateLoaded(true)
+      })
+      .catch(() => {})
+  }
+
+  // (Re)paint the template whenever it loads or the canvas resizes.
+  useEffect(() => {
+    if (templateLoaded) drawTemplate()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [templateLoaded, size])
+
+  // Claim a template published for this mode — on mount (we navigated in with
+  // one pending) or via the store while already mounted.
+  useEffect(() => {
+    const tryConsume = () => {
+      const t = consumeTemplateFor(mode)
+      if (t) loadTemplate(t.src, t.params)
+    }
+    tryConsume()
+    return subscribeTemplate(tryConsume)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode])
+
+  // The mode's symmetry, bound to the live brush state so protection and the
+  // plain brush can call it with just (ctx, a, b) / (p).
+  const symmetry = getSymmetry(mode, params)
+  const boundStampOn = (ctx: CanvasRenderingContext2D, a: Point, b: Point) =>
+    symmetry.stampOn(ctx, a, b, {
       color: colorRef.current,
       strokeWidth: strokeRef.current,
       size: sizeRef.current,
     })
-  const boundSeedPoints = (p: Point) => seedPoints(p, sizeRef.current)
+  const boundSeedPoints = (p: Point) => symmetry.seedPoints(p, sizeRef.current)
 
-  // Draw on the active layer's live canvas.
   function stamp(a: Point, b: Point) {
-    const ctx =
-      layerRef.current === "line" ? lineCtxRef.current : colorCtxRef.current
+    const ctx = colorCtxRef.current
     if (ctx) boundStampOn(ctx, a, b)
   }
 
-  // Confines color strokes to the closed region of the line layer they start in.
+  // Confines colour strokes to the closed region of the template they start in.
   const protection = useBoundaryProtection({
     colorCanvasRef,
     colorCtxRef,
@@ -170,10 +200,9 @@ export function useDrawingCanvas({
     // Single-touch only: ignore extra fingers while one is already drawing.
     if (activePointerRef.current !== null) return
     const p = pointFromEvent(e)
-    // In the color layer, confine to the region under the pointer when enabled
-    // and the line layer actually encloses one.
-    const confined =
-      layerRef.current === "color" && protectRef.current && protection.begin(p)
+    // Confine to the region under the pointer when protection is on and the
+    // template actually encloses one.
+    const confined = protectRef.current && protection.begin(p)
     activePointerRef.current = e.pointerId
     e.currentTarget.setPointerCapture(e.pointerId)
     drawingRef.current = true
@@ -197,24 +226,33 @@ export function useDrawingCanvas({
     lastRef.current = null
     activePointerRef.current = null
     protection.end()
-    // A finished line-layer stroke changed the walls; drop the cached mask.
-    if (layerRef.current === "line") protection.invalidateWalls()
   }
 
   function clear() {
-    for (const canvas of [lineCanvasRef.current, colorCanvasRef.current]) {
-      const ctx = canvas?.getContext("2d")
-      if (!ctx || !canvas) continue
+    // Clear the colouring only; a loaded template (the line layer) stays put.
+    const ctx = colorCtxRef.current
+    const canvas = colorCanvasRef.current
+    if (ctx && canvas) {
       ctx.save()
       ctx.setTransform(1, 0, 0, 1, 0, 0)
       ctx.clearRect(0, 0, canvas.width, canvas.height)
       ctx.restore()
     }
-    protection.invalidateWalls()
-    onClear?.()
+    // With no template, also clear any free-drawn line canvas remnants.
+    if (!templateImgRef.current) {
+      const lctx = lineCtxRef.current
+      const lc = lineCanvasRef.current
+      if (lctx && lc) {
+        lctx.save()
+        lctx.setTransform(1, 0, 0, 1, 0, 0)
+        lctx.clearRect(0, 0, lc.width, lc.height)
+        lctx.restore()
+      }
+      protection.invalidateWalls()
+    }
   }
 
-  // Flatten both layers (color beneath, line art on top) for saving.
+  // Flatten both layers (colour beneath, template on top) for saving.
   function composeLayers(): HTMLCanvasElement | null {
     const line = lineCanvasRef.current
     const color = colorCanvasRef.current
@@ -229,22 +267,22 @@ export function useDrawingCanvas({
   }
 
   return {
+    mode,
+    params,
     containerRef,
     colorCanvasRef,
     lineCanvasRef,
     color,
     setColor,
-    layer,
-    setLayer,
     protect,
     setProtect,
     side,
     size,
+    templateLoaded,
     onPointerDown,
     onPointerMove,
     endStroke,
     clear,
     composeLayers,
-    getLineCanvas: () => lineCanvasRef.current,
   }
 }

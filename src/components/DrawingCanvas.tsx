@@ -1,69 +1,42 @@
-import type { ReactNode } from "react"
+import { useState } from "react"
 import { LayoutGrid, RotateCcw } from "lucide-react"
 
 import { ColorPalette } from "@/components/ColorPalette"
+import { ModeGuides } from "@/components/ModeGuides"
 import { ModeSwitcher } from "@/components/ModeSwitcher"
+import { OpenTemplateButton } from "@/components/OpenTemplateButton"
 import { ProtectionMenu } from "@/components/ProtectionMenu"
 import { SaveButton } from "@/components/SaveButton"
-import { SaveLineArtMenu } from "@/components/SaveLineArtMenu"
+import { TemplateModal } from "@/components/TemplateModal"
 import { Button } from "@/components/ui/button"
-import type { DrawingMode } from "@/lib/drawings"
-import type { DrawingCanvas as DrawingCanvasState, Layer } from "@/lib/useDrawingCanvas"
+import type { DrawingCanvas as DrawingCanvasState } from "@/lib/useDrawingCanvas"
 import { cn } from "@/lib/utils"
 
 type Props = {
   // The engine bindings from useDrawingCanvas.
   dc: DrawingCanvasState
-  // Which mode this is — drives the switcher, save, and save-to-library actions.
-  mode: DrawingMode
-  // "circle" for the mandala's round canvas; "square" (default) for the rest.
-  shape?: "square" | "circle"
-  // Mode-specific overlay drawn above the canvases (e.g. sector or tile guides),
-  // sized to `dc.size`. Rendered pointer-transparent so strokes fall through.
-  guides?: ReactNode
 }
 
-// The shared shell for the symmetry drawing modes: header (mode switcher, layer
-// toggle, clear, save, library), the stacked color/line canvases with optional
-// guides, and the color palette. All behavior lives in useDrawingCanvas; this is
-// purely presentation wired to its bindings.
-export function DrawingCanvas({ dc, mode, shape = "square", guides }: Props) {
+// The shared shell for the four coloring modes: header (mode switcher, clear,
+// save, library), the colour canvas over an optional read-only template with the
+// mode's symmetry guides, and the palette (led by the "pick a template" button).
+export function DrawingCanvas({ dc }: Props) {
+  const [templatesOpen, setTemplatesOpen] = useState(false)
+  const openTemplates = () => setTemplatesOpen(true)
+  const circle = dc.mode === "mandala"
+
   return (
     <div className="flex h-[100dvh] flex-col overflow-hidden bg-muted/30">
       {/* Controls row */}
       <header className="z-10 flex shrink-0 items-center justify-between gap-3 border-b bg-background px-3 py-2 sm:px-4 sm:py-3">
-        <ModeSwitcher current={mode} />
+        <ModeSwitcher current={dc.mode} />
 
         <div className="flex items-center gap-2 sm:gap-3">
-          {/* Layer toggle */}
-          <div className="flex items-center rounded-md bg-muted p-0.5">
-            {(["line", "color"] as Layer[]).map((l) => (
-              <button
-                key={l}
-                type="button"
-                onClick={() => dc.setLayer(l)}
-                aria-pressed={dc.layer === l}
-                className={cn(
-                  "rounded px-2 py-1 text-xs font-medium transition-colors sm:px-3 sm:text-sm",
-                  dc.layer === l
-                    ? "bg-background shadow-sm"
-                    : "text-muted-foreground hover:text-foreground"
-                )}
-              >
-                {l === "line" ? "Line" : "Color"}
-              </button>
-            ))}
-          </div>
-
-          <Button variant="ghost" size="icon" aria-label="Clear" onClick={dc.clear}>
-            <RotateCcw />
-          </Button>
+          <ProtectionMenu protect={dc.protect} onChange={dc.setProtect} />
 
           <span className="h-6 w-px bg-border" />
 
-          <SaveButton getCanvas={dc.composeLayers} mode={mode} />
-
-          <SaveLineArtMenu mode={mode} getLineCanvas={dc.getLineCanvas} />
+          <SaveButton getCanvas={dc.composeLayers} mode={dc.mode} />
 
           <a href="#/gallery">
             <Button variant="outline">
@@ -84,48 +57,51 @@ export function DrawingCanvas({ dc, mode, shape = "square", guides }: Props) {
           <div
             className={cn(
               "relative overflow-hidden border bg-white shadow-sm",
-              shape === "circle" ? "rounded-full" : "rounded-lg"
+              circle ? "rounded-full" : "rounded-lg"
             )}
             style={{ width: dc.side || undefined, height: dc.side || undefined }}
           >
-            {/* Color layer (bottom) — the top canvas captures pointer events and
-                routes strokes to the active layer. */}
+            {/* Colour layer (bottom) — the top canvas captures pointer events. */}
             <canvas
               ref={dc.colorCanvasRef}
               className="pointer-events-none absolute inset-0 h-full w-full"
             />
-            {/* Line-art layer (top) — always visually above the color layer. */}
+            {/* Template layer (top) — read-only, shows the lines to colour in. */}
             <canvas
               ref={dc.lineCanvasRef}
-              className="absolute inset-0 h-full w-full touch-none"
+              className="absolute inset-0 h-full w-full cursor-crosshair touch-none"
               onPointerDown={dc.onPointerDown}
               onPointerMove={dc.onPointerMove}
               onPointerUp={dc.endStroke}
               onPointerLeave={dc.endStroke}
               onPointerCancel={dc.endStroke}
             />
-            {guides && (
-              <svg
-                className="pointer-events-none absolute inset-0 h-full w-full"
-                width={dc.size.w}
-                height={dc.size.h}
-              >
-                {guides}
-              </svg>
-            )}
+            <ModeGuides mode={dc.mode} params={dc.params} size={dc.size} />
           </div>
         </main>
 
-        {dc.layer === "color" && (
-          <ColorPalette
-            value={dc.color}
-            onChange={dc.setColor}
-            footer={
-              <ProtectionMenu protect={dc.protect} onChange={dc.setProtect} />
-            }
-          />
-        )}
+        <ColorPalette
+          value={dc.color}
+          onChange={dc.setColor}
+          leading={<OpenTemplateButton onOpen={openTemplates} />}
+          footer={
+            <button
+              type="button"
+              aria-label="Clear all"
+              onClick={dc.clear}
+              className="flex items-center justify-center rounded-full border bg-background p-2 text-foreground shadow-sm transition-colors hover:bg-muted"
+            >
+              <span className="flex h-8 w-8 items-center justify-center sm:h-9 sm:w-9">
+                <RotateCcw className="h-4 w-4" />
+              </span>
+            </button>
+          }
+        />
       </div>
+
+      {templatesOpen && (
+        <TemplateModal onClose={() => setTemplatesOpen(false)} />
+      )}
     </div>
   )
 }

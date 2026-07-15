@@ -1,14 +1,17 @@
 import type { DrawingMode } from "@/lib/drawings"
+import { defaultParams, type SymParams } from "@/lib/symmetry"
 
-// User-created line arts, saved locally (per device) so they show up in the
-// line-art library's "Pick a picture to color in" modal next to the bundled
-// pages. Each one records the mode it was drawn in automatically.
+// User-created templates, saved locally (per device) so they show up in the
+// "From template" modal next to the bundled pages. Each records the mode it was
+// drawn in and its symmetry settings, so coloring replicates strokes the way
+// the lines were drawn.
 const STORAGE_KEY = "draw:custom-linearts"
 
 export type CustomLineArt = {
   id: string
   label: string
-  mode: DrawingMode // captured automatically from the mode it was drawn in
+  mode: DrawingMode // the symmetry mode it was drawn in (and colors in)
+  params: SymParams // symmetry settings (e.g. mandala sector count)
   src: string // data URL: PNG, black lines on a transparent background
   createdAt: number
 }
@@ -18,7 +21,6 @@ const MODE_LABELS: Record<DrawingMode, string> = {
   mandala: "Mandala",
   tiles: "Tiles",
   mirror: "Mirror",
-  "line-art": "Line art",
 }
 
 export function modeLabel(mode: DrawingMode): string {
@@ -29,7 +31,9 @@ function load(): CustomLineArt[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
     const list = raw ? (JSON.parse(raw) as CustomLineArt[]) : []
-    return list.sort((a, b) => b.createdAt - a.createdAt) // newest first
+    return list
+      .map((item) => ({ ...item, params: item.params ?? defaultParams() }))
+      .sort((a, b) => b.createdAt - a.createdAt) // newest first
   } catch {
     return []
   }
@@ -67,12 +71,14 @@ export function subscribeCustomLinearts(onChange: () => void): () => void {
 
 export function saveCustomLineArt(input: {
   mode: DrawingMode
+  params?: SymParams
   src: string
 }): CustomLineArt {
   const item: CustomLineArt = {
     id: crypto.randomUUID(),
-    label: `${modeLabel(input.mode)} sketch`,
+    label: `${modeLabel(input.mode)} template`,
     mode: input.mode,
+    params: input.params ?? defaultParams(),
     src: input.src,
     createdAt: Date.now(),
   }

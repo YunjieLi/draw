@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react"
 
+import { Toaster } from "@/components/ui/toast"
 import { AuthProvider } from "@/lib/auth"
 import FreeForm from "@/pages/FreeForm"
 import Gallery from "@/pages/Gallery"
-import LineArt from "@/pages/LineArt"
 import Mandala from "@/pages/Mandala"
 import Mirror from "@/pages/Mirror"
+import TemplateCreator from "@/pages/TemplateCreator"
 import Tiles from "@/pages/Tiles"
 
 function useHashRoute() {
@@ -33,8 +34,8 @@ function Routes() {
       return <Tiles />
     case "/mirror":
       return <Mirror />
-    case "/line-art":
-      return <LineArt />
+    case "/new-template":
+      return <TemplateCreator />
     case "/gallery":
       return <Gallery />
     case "/mandala":
@@ -48,6 +49,7 @@ function App() {
   return (
     <AuthProvider>
       <Routes />
+      <Toaster />
     </AuthProvider>
   )
 }

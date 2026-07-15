@@ -3,7 +3,6 @@ import { Check, ChevronDown } from "lucide-react"
 
 import {
   FreeFormPreview,
-  LineArtPreview,
   MandalaPreview,
   MirrorPreview,
   TilesPreview,
@@ -24,7 +23,6 @@ const MODES: ModeDef[] = [
   { id: "mandala", label: "Mandala", href: "#/mandala", Preview: MandalaPreview },
   { id: "tiles", label: "Tiles", href: "#/tiles", Preview: TilesPreview },
   { id: "mirror", label: "Mirror", href: "#/mirror", Preview: MirrorPreview },
-  { id: "line-art", label: "Line art", href: "#/line-art", Preview: LineArtPreview },
 ]
 
 // Top-left control: shows the current mode and opens a popover to switch modes.
