@@ -26,6 +26,9 @@ type Options = {
   seedPoints: (p: Point) => Point[]
   // The current brush width in CSS pixels, used to bound each move's redraw.
   strokeWidth: () => number
+  // Whether the canvas is a torus (see Symmetry.wrap): regions, and the bleed
+  // under the lines, then continue across its opposite edges.
+  wrap: boolean
 }
 
 // Confine freehand color strokes to the closed region(s) of the line layer they
@@ -40,6 +43,7 @@ export function useBoundaryProtection({
   stampOn,
   seedPoints,
   strokeWidth,
+  wrap,
 }: Options) {
   // The active protected stroke: it paints each move's stamps clipped to the
   // region and touches only their bounding box (see beginClippedStroke). Null
@@ -80,11 +84,11 @@ export function useBoundaryProtection({
       const iy = Math.floor(pt.y * sy)
       if (ix < 0 || iy < 0 || ix >= w || iy >= h) continue
       const idx = iy * w + ix
-      if (floodInto(union, mask.data, w, h, idx)) any = true
+      if (floodInto(union, mask.data, w, h, idx, wrap)) any = true
     }
     if (!any) return false // every stamp seed sits on a line
 
-    const clipMask = bleedUnderLines(union, mask.data, w, h, EDGE_BLEED)
+    const clipMask = bleedUnderLines(union, mask.data, w, h, EDGE_BLEED, wrap)
     const clip = buildClipCanvas(clipMask, w, h)
 
     const ctx = colorCtxRef.current

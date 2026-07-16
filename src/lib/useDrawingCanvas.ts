@@ -189,6 +189,7 @@ export function useDrawingCanvas({ mode }: { mode: DrawingMode }) {
     stampOn: boundStampOn,
     seedPoints: boundSeedPoints,
     strokeWidth: () => strokeRef.current,
+    wrap: symmetry.wrap,
   })
 
   function pointFromEvent(e: React.PointerEvent<HTMLCanvasElement>): Point {

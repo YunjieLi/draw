@@ -79,6 +79,27 @@ export function computeRegion(
   return region
 }
 
+// The four orthogonal neighbours of pixel `i`, written into `out` as indices,
+// with -1 where the grid edge ends the walk.
+//
+// `wrap` makes the grid a torus: the left/right and top/bottom edges are the
+// same seam, so a walk that leaves one edge continues on the opposite one. Modes
+// whose pattern repeats past the canvas border (tiles) need this — a region that
+// straddles the border is one region, drawn as two halves at opposite edges.
+function neighbors(
+  i: number,
+  w: number,
+  n: number,
+  wrap: boolean,
+  out: Int32Array
+) {
+  const x = i % w
+  out[0] = x > 0 ? i - 1 : wrap ? i + w - 1 : -1
+  out[1] = x < w - 1 ? i + 1 : wrap ? i - w + 1 : -1
+  out[2] = i >= w ? i - w : wrap ? i + n - w : -1
+  out[3] = i < n - w ? i + w : wrap ? i - n + w : -1
+}
+
 // Flood the closed region containing `start` directly into a shared `union`
 // mask, marking every reached pixel. Returns true if it filled anything (false
 // if `start` is a wall or was already covered by a prior flood). Use this to
@@ -88,25 +109,20 @@ export function floodInto(
   wall: Uint8Array,
   w: number,
   h: number,
-  start: number
+  start: number,
+  wrap = false
 ): boolean {
   if (wall[start] || union[start]) return false
   const n = w * h
   const stack = [start]
+  const nb = new Int32Array(4)
   union[start] = 1
   while (stack.length) {
-    const i = stack.pop()!
-    const x = i % w
-    const left = i - 1
-    const right = i + 1
-    const up = i - w
-    const down = i + w
-    if (x > 0 && !union[left] && !wall[left]) (union[left] = 1), stack.push(left)
-    if (x < w - 1 && !union[right] && !wall[right])
-      (union[right] = 1), stack.push(right)
-    if (up >= 0 && !union[up] && !wall[up]) (union[up] = 1), stack.push(up)
-    if (down < n && !union[down] && !wall[down])
-      (union[down] = 1), stack.push(down)
+    neighbors(stack.pop()!, w, n, wrap, nb)
+    for (let k = 0; k < 4; k++) {
+      const j = nb[k]
+      if (j >= 0 && !union[j] && !wall[j]) (union[j] = 1), stack.push(j)
+    }
   }
   return true
 }
@@ -119,35 +135,32 @@ export function bleedUnderLines(
   wall: Uint8Array,
   w: number,
   h: number,
-  bleed: number
+  bleed: number,
+  wrap = false
 ): Uint8Array {
   const n = w * h
   const out = region.slice()
+  const nb = new Int32Array(4)
   let frontier: number[] = []
   for (let i = 0; i < n; i++) {
     if (!region[i]) continue
-    const x = i % w
-    if (
-      (x > 0 && wall[i - 1]) ||
-      (x < w - 1 && wall[i + 1]) ||
-      (i - w >= 0 && wall[i - w]) ||
-      (i + w < n && wall[i + w])
-    )
-      frontier.push(i)
+    neighbors(i, w, n, wrap, nb)
+    for (let k = 0; k < 4; k++) {
+      const j = nb[k]
+      if (j >= 0 && wall[j]) {
+        frontier.push(i)
+        break
+      }
+    }
   }
   for (let step = 0; step < bleed && frontier.length; step++) {
     const next: number[] = []
     for (const i of frontier) {
-      const x = i % w
-      const left = i - 1
-      const right = i + 1
-      const up = i - w
-      const down = i + w
-      if (x > 0 && !out[left] && wall[left]) (out[left] = 1), next.push(left)
-      if (x < w - 1 && !out[right] && wall[right])
-        (out[right] = 1), next.push(right)
-      if (up >= 0 && !out[up] && wall[up]) (out[up] = 1), next.push(up)
-      if (down < n && !out[down] && wall[down]) (out[down] = 1), next.push(down)
+      neighbors(i, w, n, wrap, nb)
+      for (let k = 0; k < 4; k++) {
+        const j = nb[k]
+        if (j >= 0 && !out[j] && wall[j]) (out[j] = 1), next.push(j)
+      }
     }
     frontier = next
   }
