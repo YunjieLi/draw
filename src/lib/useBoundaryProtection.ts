@@ -8,9 +8,11 @@ import {
   floodInto,
   stampBbox,
   wallMaskFromCanvas,
+  type Bbox,
   type ClippedStroke,
   type WallMask,
 } from "./boundaryProtection"
+import type { Replica } from "./symmetry"
 
 type Point = { x: number; y: number }
 
@@ -21,9 +23,10 @@ type Options = {
   // Draw the mode's stroke a→b (with whatever mirror/rotate/tile symmetry it
   // applies) onto an arbitrary context instead of the live canvas.
   stampOn: (ctx: CanvasRenderingContext2D, a: Point, b: Point) => void
-  // The start point replicated to every place a stamp lands. Its regions are
-  // unioned so each symmetric stamp is confined to the area it starts in.
-  seedPoints: (p: Point) => Point[]
+  // Every place the stroke a→b lands (the mode's Symmetry.replicas). Each
+  // replica's region is flooded so it stays in the area it starts in, and each
+  // replica's own box bounds the redraw.
+  replicas: (a: Point, b: Point) => Replica[]
   // The current brush width in CSS pixels, used to bound each move's redraw.
   strokeWidth: () => number
   // Whether the canvas is a torus (see Symmetry.wrap): regions, and the bleed
@@ -41,7 +44,7 @@ export function useBoundaryProtection({
   colorCtxRef,
   lineCanvasRef,
   stampOn,
-  seedPoints,
+  replicas,
   strokeWidth,
   wrap,
 }: Options) {
@@ -74,14 +77,16 @@ export function useBoundaryProtection({
     }
     if (!mask || !mask.hasWall) return false // nothing drawn to stay inside of
 
-    // Union the regions of every place this stroke's stamps will land.
+    // Union the regions of every place this stroke's stamps will land. A
+    // replica that starts off-canvas has no pixel to flood from; on a torus its
+    // region is reached anyway, from across the seam.
     const sx = w / rect.width
     const sy = h / rect.height
     const union = new Uint8Array(w * h)
     let any = false
-    for (const pt of seedPoints(start)) {
-      const ix = Math.floor(pt.x * sx)
-      const iy = Math.floor(pt.y * sy)
+    for (const [from] of replicas(start, start)) {
+      const ix = Math.floor(from.x * sx)
+      const iy = Math.floor(from.y * sy)
       if (ix < 0 || iy < 0 || ix >= w || iy >= h) continue
       const idx = iy * w + ix
       if (floodInto(union, mask.data, w, h, idx, wrap)) any = true
@@ -107,15 +112,29 @@ export function useBoundaryProtection({
     const rect = colorCanvas.getBoundingClientRect()
     if (rect.width === 0 || rect.height === 0) return
 
-    // Every place this move's stamps land — its bounding box bounds the redraw.
+    // Bound the redraw by what this move's stamps actually cover: each replica's
+    // own box, unioned. Replicas landing wholly off-canvas are dropped — a
+    // wrapping mode repeats past the border, and all but the ones straddling it
+    // paint nothing. Taking one box over every replica's endpoints instead would
+    // span the gaps between them, which for tiles is the whole canvas.
     const sx = w / rect.width
     const sy = h / rect.height
-    const bbox = stampBbox(
-      [...seedPoints(a), ...seedPoints(b)],
-      sx,
-      sy,
-      strokeWidth()
-    )
+    const sw = strokeWidth()
+    let bbox: Bbox | null = null
+    for (const [from, to] of replicas(a, b)) {
+      const box = stampBbox([from, to], sx, sy, sw)
+      if (!box) continue
+      if (box.maxX <= 0 || box.minX >= w) continue
+      if (box.maxY <= 0 || box.minY >= h) continue
+      if (!bbox) {
+        bbox = box
+        continue
+      }
+      if (box.minX < bbox.minX) bbox.minX = box.minX
+      if (box.minY < bbox.minY) bbox.minY = box.minY
+      if (box.maxX > bbox.maxX) bbox.maxX = box.maxX
+      if (box.maxY > bbox.maxY) bbox.maxY = box.maxY
+    }
     if (!bbox) return
 
     c.paint((ctx) => stampOn(ctx, a, b), bbox)

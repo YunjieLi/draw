@@ -20,7 +20,16 @@ export const DEFAULT_STROKE_WIDTH = 5
 
 export const defaultParams = (): SymParams => ({ sectors: DEFAULT_SECTORS })
 
+// One place a segment lands under a symmetry: the whole segment, moved.
+export type Replica = [from: Point, to: Point]
+
 export type Symmetry = {
+  // Every place the segment a→b lands under the mode's symmetry — the single
+  // source of truth for where a stroke goes. stampOn draws exactly these, and
+  // coloring seeds a region from each replica's start and bounds each replica's
+  // own box. Both endpoints of a replica ride the same copy of the pattern, so
+  // a segment stays intact even when it crosses into the next tile/sector.
+  replicas: (a: Point, b: Point, size: Size) => Replica[]
   // Draw one segment a→b, replicated with the mode's symmetry, onto `ctx`.
   stampOn: (
     ctx: CanvasRenderingContext2D,
@@ -28,9 +37,6 @@ export type Symmetry = {
     b: Point,
     env: StampEnv
   ) => void
-  // Every place a point lands under that symmetry (used to seed coloring's
-  // boundary protection so each replica stays in the region it starts in).
-  seedPoints: (p: Point, size: Size) => Point[]
   // Whether the canvas is a torus — its opposite edges are the same seam. True
   // only for tiles, whose pattern keeps repeating past the border: a region
   // straddling that border is a single region showing as two halves at opposite
@@ -65,46 +71,51 @@ function applyBrush(ctx: CanvasRenderingContext2D, env: StampEnv) {
   ctx.lineWidth = env.strokeWidth
 }
 
-// No symmetry: a stroke is drawn once, at the pointer.
-function freeForm(): Symmetry {
+// A symmetry is just where its strokes repeat to — stamping is drawing each.
+function fromReplicas(
+  wrap: boolean,
+  replicas: Symmetry["replicas"]
+): Symmetry {
   return {
-    wrap: false,
+    wrap,
+    replicas,
     stampOn(ctx, a, b, env) {
       applyBrush(ctx, env)
-      segment(ctx, a, b)
+      for (const [from, to] of replicas(a, b, env.size)) segment(ctx, from, to)
     },
-    seedPoints: (p) => [p],
   }
+}
+
+// No symmetry: a stroke is drawn once, at the pointer.
+function freeForm(): Symmetry {
+  return fromReplicas(false, (a, b) => [[a, b]])
 }
 
 // A stroke plus its reflection across the vertical center axis.
 function mirror(): Symmetry {
-  return {
-    wrap: false,
-    stampOn(ctx, a, b, env) {
-      const { w } = env.size
-      applyBrush(ctx, env)
-      segment(ctx, a, b)
-      segment(ctx, { x: w - a.x, y: a.y }, { x: w - b.x, y: b.y })
-    },
-    seedPoints: (p, size) => [p, { x: size.w - p.x, y: p.y }],
-  }
+  return fromReplicas(false, (a, b, size) => [
+    [a, b],
+    [
+      { x: size.w - a.x, y: a.y },
+      { x: size.w - b.x, y: b.y },
+    ],
+  ])
 }
 
 // Where a stroke anchored at `p` repeats to, as offsets from `p`: into every
-// tile at the same offset within each, plus one ring of tiles past each edge.
-// The extra ring is what keeps the pattern seamless — a stroke near a tile
-// border spills over it, and off-canvas rings are how that spill comes back in
-// at the opposite border rather than being clipped away.
-function tileOffsets(p: Point, size: Size): Point[] {
+// tile, at the same offset within each. `rings` adds that many rings of tiles
+// beyond the grid on every side — off-canvas replicas whose brush pokes back
+// over the border, which is how a stroke that spills off one edge reappears on
+// the opposite one (see Symmetry.wrap).
+function tileOffsets(p: Point, size: Size, rings = 0): Point[] {
   const G = TILE_GRID
   const cw = size.w / G
   const ch = size.h / G
   const baseCol = Math.floor(p.x / cw)
   const baseRow = Math.floor(p.y / ch)
   const offsets: Point[] = []
-  for (let row = -1; row <= G; row++)
-    for (let col = -1; col <= G; col++)
+  for (let row = -rings; row < G + rings; row++)
+    for (let col = -rings; col < G + rings; col++)
       offsets.push({ x: (col - baseCol) * cw, y: (row - baseRow) * ch })
   return offsets
 }
@@ -112,53 +123,35 @@ function tileOffsets(p: Point, size: Size): Point[] {
 // A stroke replicated into every tile of the grid, at the same offset within
 // each — so the pattern stays seamless.
 function tiles(): Symmetry {
-  return {
-    wrap: true,
-    stampOn(ctx, a, b, env) {
-      applyBrush(ctx, env)
-      for (const d of tileOffsets(a, env.size))
-        segment(
-          ctx,
-          { x: a.x + d.x, y: a.y + d.y },
-          { x: b.x + d.x, y: b.y + d.y }
-        )
-    },
-    seedPoints: (p, size) =>
-      tileOffsets(p, size).map((d) => ({ x: p.x + d.x, y: p.y + d.y })),
-  }
+  // Both endpoints ride the tile `a` is in, so a segment crossing into the next
+  // tile stays one segment. The extra ring only marks the canvas where a stroke
+  // sits within a brush radius of a tile border; elsewhere those replicas fall
+  // wholly outside it.
+  return fromReplicas(true, (a, b, size) =>
+    tileOffsets(a, size, 1).map((d): Replica => [
+      { x: a.x + d.x, y: a.y + d.y },
+      { x: b.x + d.x, y: b.y + d.y },
+    ])
+  )
 }
 
 // A stroke rotated into each sector (rotational symmetry).
 function mandala(sectors: number): Symmetry {
-  return {
-    wrap: false,
-    stampOn(ctx, a, b, env) {
-      const { w, h } = env.size
-      const cx = w / 2
-      const cy = h / 2
-      applyBrush(ctx, env)
-      const step = (Math.PI * 2) / sectors
-      for (let i = 0; i < sectors; i++) {
-        ctx.save()
-        ctx.translate(cx, cy)
-        ctx.rotate(step * i)
-        segment(ctx, { x: a.x - cx, y: a.y - cy }, { x: b.x - cx, y: b.y - cy })
-        ctx.restore()
+  return fromReplicas(false, (a, b, size) => {
+    const cx = size.w / 2
+    const cy = size.h / 2
+    const step = (Math.PI * 2) / sectors
+    const out: Replica[] = []
+    for (let i = 0; i < sectors; i++) {
+      const c = Math.cos(step * i)
+      const s = Math.sin(step * i)
+      const rotate = (p: Point): Point => {
+        const rx = p.x - cx
+        const ry = p.y - cy
+        return { x: cx + rx * c - ry * s, y: cy + rx * s + ry * c }
       }
-    },
-    seedPoints(p, size) {
-      const cx = size.w / 2
-      const cy = size.h / 2
-      const rx = p.x - cx
-      const ry = p.y - cy
-      const step = (Math.PI * 2) / sectors
-      const pts: Point[] = []
-      for (let i = 0; i < sectors; i++) {
-        const c = Math.cos(step * i)
-        const s = Math.sin(step * i)
-        pts.push({ x: cx + rx * c - ry * s, y: cy + rx * s + ry * c })
-      }
-      return pts
-    },
-  }
+      out.push([rotate(a), rotate(b)])
+    }
+    return out
+  })
 }

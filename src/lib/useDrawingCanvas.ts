@@ -174,7 +174,8 @@ export function useDrawingCanvas({ mode }: { mode: DrawingMode }) {
       strokeWidth: strokeRef.current,
       size: sizeRef.current,
     })
-  const boundSeedPoints = (p: Point) => symmetry.seedPoints(p, sizeRef.current)
+  const boundReplicas = (a: Point, b: Point) =>
+    symmetry.replicas(a, b, sizeRef.current)
 
   function stamp(a: Point, b: Point) {
     const ctx = colorCtxRef.current
@@ -187,7 +188,7 @@ export function useDrawingCanvas({ mode }: { mode: DrawingMode }) {
     colorCtxRef,
     lineCanvasRef,
     stampOn: boundStampOn,
-    seedPoints: boundSeedPoints,
+    replicas: boundReplicas,
     strokeWidth: () => strokeRef.current,
     wrap: symmetry.wrap,
   })
