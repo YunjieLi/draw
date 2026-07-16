@@ -31,6 +31,11 @@ export type Symmetry = {
   // Every place a point lands under that symmetry (used to seed coloring's
   // boundary protection so each replica stays in the region it starts in).
   seedPoints: (p: Point, size: Size) => Point[]
+  // Whether the canvas is a torus — its opposite edges are the same seam. True
+  // only for tiles, whose pattern keeps repeating past the border: a region
+  // straddling that border is a single region showing as two halves at opposite
+  // edges, so coloring has to flood (and paint) across the seam.
+  wrap: boolean
 }
 
 // Build the symmetry for a mode + its params. Rebuilt cheaply per render.
@@ -63,6 +68,7 @@ function applyBrush(ctx: CanvasRenderingContext2D, env: StampEnv) {
 // No symmetry: a stroke is drawn once, at the pointer.
 function freeForm(): Symmetry {
   return {
+    wrap: false,
     stampOn(ctx, a, b, env) {
       applyBrush(ctx, env)
       segment(ctx, a, b)
@@ -74,6 +80,7 @@ function freeForm(): Symmetry {
 // A stroke plus its reflection across the vertical center axis.
 function mirror(): Symmetry {
   return {
+    wrap: false,
     stampOn(ctx, a, b, env) {
       const { w } = env.size
       applyBrush(ctx, env)
@@ -84,46 +91,47 @@ function mirror(): Symmetry {
   }
 }
 
+// Where a stroke anchored at `p` repeats to, as offsets from `p`: into every
+// tile at the same offset within each, plus one ring of tiles past each edge.
+// The extra ring is what keeps the pattern seamless — a stroke near a tile
+// border spills over it, and off-canvas rings are how that spill comes back in
+// at the opposite border rather than being clipped away.
+function tileOffsets(p: Point, size: Size): Point[] {
+  const G = TILE_GRID
+  const cw = size.w / G
+  const ch = size.h / G
+  const baseCol = Math.floor(p.x / cw)
+  const baseRow = Math.floor(p.y / ch)
+  const offsets: Point[] = []
+  for (let row = -1; row <= G; row++)
+    for (let col = -1; col <= G; col++)
+      offsets.push({ x: (col - baseCol) * cw, y: (row - baseRow) * ch })
+  return offsets
+}
+
 // A stroke replicated into every tile of the grid, at the same offset within
 // each — so the pattern stays seamless.
 function tiles(): Symmetry {
-  const G = TILE_GRID
   return {
+    wrap: true,
     stampOn(ctx, a, b, env) {
-      const { w, h } = env.size
-      const cw = w / G
-      const ch = h / G
       applyBrush(ctx, env)
-      const baseCol = Math.floor(a.x / cw)
-      const baseRow = Math.floor(a.y / ch)
-      for (let row = 0; row < G; row++) {
-        for (let col = 0; col < G; col++) {
-          const dx = (col - baseCol) * cw
-          const dy = (row - baseRow) * ch
-          segment(ctx, { x: a.x + dx, y: a.y + dy }, { x: b.x + dx, y: b.y + dy })
-        }
-      }
+      for (const d of tileOffsets(a, env.size))
+        segment(
+          ctx,
+          { x: a.x + d.x, y: a.y + d.y },
+          { x: b.x + d.x, y: b.y + d.y }
+        )
     },
-    seedPoints(p, size) {
-      const cw = size.w / G
-      const ch = size.h / G
-      const baseCol = Math.floor(p.x / cw)
-      const baseRow = Math.floor(p.y / ch)
-      const pts: Point[] = []
-      for (let row = 0; row < G; row++)
-        for (let col = 0; col < G; col++)
-          pts.push({
-            x: p.x + (col - baseCol) * cw,
-            y: p.y + (row - baseRow) * ch,
-          })
-      return pts
-    },
+    seedPoints: (p, size) =>
+      tileOffsets(p, size).map((d) => ({ x: p.x + d.x, y: p.y + d.y })),
   }
 }
 
 // A stroke rotated into each sector (rotational symmetry).
 function mandala(sectors: number): Symmetry {
   return {
+    wrap: false,
     stampOn(ctx, a, b, env) {
       const { w, h } = env.size
       const cx = w / 2
