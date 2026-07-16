@@ -32,6 +32,15 @@ export function DrawingCanvas({ dc }: Props) {
         <ModeSwitcher current={dc.mode} />
 
         <div className="flex items-center gap-2 sm:gap-3">
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label="Clear all"
+            onClick={dc.clear}
+          >
+            <RotateCcw />
+          </Button>
+
           <ProtectionMenu protect={dc.protect} onChange={dc.setProtect} />
 
           <span className="h-6 w-px bg-border" />
@@ -84,18 +93,6 @@ export function DrawingCanvas({ dc }: Props) {
           value={dc.color}
           onChange={dc.setColor}
           leading={<OpenTemplateButton onOpen={openTemplates} />}
-          footer={
-            <button
-              type="button"
-              aria-label="Clear all"
-              onClick={dc.clear}
-              className="flex items-center justify-center rounded-full border bg-background p-2 text-foreground shadow-sm transition-colors hover:bg-muted"
-            >
-              <span className="flex h-8 w-8 items-center justify-center sm:h-9 sm:w-9">
-                <RotateCcw className="h-4 w-4" />
-              </span>
-            </button>
-          }
         />
       </div>
 

@@ -72,9 +72,10 @@ export function ColorPalette({ value, onChange, leading, footer }: Props) {
             "landscape:flex-col"
           )}
         >
-          {/* Palette-picker entry point — opens the named-palette popover. The
-              caret points the way the popover opens: up in portrait (it opens
-              above), right in landscape (it opens to the side). */}
+          {/* Palette-picker entry point — opens the named-palette popover. It
+              sits outside the scroll area, so it stays pinned while the swatches
+              scroll. The caret points the way the popover opens: up in portrait
+              (it opens above), right in landscape (it opens to the side). */}
           <button
             type="button"
             onClick={() => setOpen((o) => !o)}
@@ -87,21 +88,37 @@ export function ColorPalette({ value, onChange, leading, footer }: Props) {
             <ChevronRight className="hidden h-4 w-4 landscape:block" />
           </button>
 
-          {palette.colors.map((c) => (
-            <button
-              key={c}
-              type="button"
-              onClick={() => onChange(c)}
-              aria-label={`Color ${c}`}
-              className={cn(
-                "h-8 w-8 shrink-0 rounded-full border transition-transform hover:scale-110 sm:h-9 sm:w-9",
-                value === c
-                  ? "ring-2 ring-foreground ring-offset-2 ring-offset-background"
-                  : "border-black/10"
-              )}
-              style={{ backgroundColor: c }}
-            />
-          ))}
+          {/* Swatches scroll (hidden scrollbar) when there are more than fit —
+              horizontally in portrait, vertically in landscape — so a large
+              palette never pushes the rest of the bar off-screen. */}
+          <div
+            className={cn(
+              "flex items-center gap-2 landscape:flex-col",
+              "max-w-[calc(100vw-9rem)] overflow-auto landscape:max-w-none landscape:max-h-[calc(100dvh-14rem)]",
+              "[scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+            )}
+          >
+            {palette.colors.map((c) => (
+              <button
+                key={c}
+                type="button"
+                onClick={() => onChange(c)}
+                aria-label={`Color ${c}`}
+                aria-pressed={value === c}
+                className="h-8 w-8 shrink-0 rounded-full border border-black/10 sm:h-9 sm:w-9"
+                style={{
+                  backgroundColor: c,
+                  // Selected: an inset ring (dark rim + light gap) drawn inside
+                  // the swatch, so the highlight never spills past its bounds and
+                  // gets clipped by the scroll container.
+                  boxShadow:
+                    value === c
+                      ? "inset 0 0 0 2px hsl(var(--foreground)), inset 0 0 0 4px hsl(var(--background))"
+                      : undefined,
+                }}
+              />
+            ))}
+          </div>
         </div>
 
         {open && (
