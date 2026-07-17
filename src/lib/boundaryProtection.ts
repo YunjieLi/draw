@@ -1,6 +1,6 @@
 // Shared "boundary protection" primitives: keep a paint stroke inside the
-// closed region of a line layer it starts in. Used by the line-art coloring
-// page and, via useBoundaryProtection, by the freehand modes.
+// closed region of a line layer it starts in. Reached through
+// useBoundaryProtection, which is how every coloring mode uses them.
 
 // A line pixel counts as a "wall" (a boundary a protected stroke can't cross)
 // once its rendered alpha clears this threshold — low enough that antialiased
@@ -35,48 +35,6 @@ export function wallMaskFromCanvas(canvas: HTMLCanvasElement): WallMask | null {
       hasWall = true
     }
   return { w, h, data, hasWall }
-}
-
-// Build a wall mask from already-rasterized pixels (e.g. a decoded line-art
-// image drawn onto an offscreen canvas).
-export function wallMaskFromPixels(
-  px: Uint8ClampedArray,
-  w: number,
-  h: number
-): Uint8Array {
-  const data = new Uint8Array(w * h)
-  for (let i = 0; i < data.length; i++)
-    if (px[i * 4 + 3] >= WALL_ALPHA) data[i] = 1
-  return data
-}
-
-// Flood the closed region containing `start` (a device-pixel index), bounded by
-// walls. Returns a per-pixel mask (1 = in region), or null if `start` is a wall.
-export function computeRegion(
-  wall: Uint8Array,
-  w: number,
-  h: number,
-  start: number
-): Uint8Array | null {
-  if (wall[start]) return null
-  const region = new Uint8Array(w * h)
-  const stack = [start]
-  region[start] = 1
-  while (stack.length) {
-    const i = stack.pop()!
-    const x = i % w
-    const left = i - 1
-    const right = i + 1
-    const up = i - w
-    const down = i + w
-    if (x > 0 && !region[left] && !wall[left]) (region[left] = 1), stack.push(left)
-    if (x < w - 1 && !region[right] && !wall[right])
-      (region[right] = 1), stack.push(right)
-    if (up >= 0 && !region[up] && !wall[up]) (region[up] = 1), stack.push(up)
-    if (down < w * h && !region[down] && !wall[down])
-      (region[down] = 1), stack.push(down)
-  }
-  return region
 }
 
 // The four orthogonal neighbours of pixel `i`, written into `out` as indices,
