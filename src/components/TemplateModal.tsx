@@ -125,46 +125,51 @@ export function TemplateModal({ onClose }: { onClose: () => void }) {
             </section>
           )}
 
-          <section className="space-y-2">
-            <div className="space-y-0.5">
-              {custom.length > 0 && (
-                <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  Coloring pages
-                </h3>
-              )}
-              <p className="text-xs text-muted-foreground">
-                Coloring pages courtesy of{" "}
-                <a
-                  href="https://yaycoloringpages.com"
-                  target="_blank"
-                  rel="noreferrer noopener"
-                  className="font-medium underline underline-offset-2 hover:text-foreground"
-                >
-                  yaycoloringpages.com
-                </a>
-              </p>
-            </div>
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-4">
-              {LINEARTS.map((art) => (
-                <button
-                  key={art.id}
-                  type="button"
-                  onClick={() => pick(art.src, "free-form")}
-                  className="group overflow-hidden rounded-xl border bg-white shadow-sm transition hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-foreground focus-visible:ring-offset-2"
-                >
-                  <div className="aspect-[3/4] w-full">
-                    <img
-                      src={art.src}
-                      alt={art.label}
-                      loading="lazy"
-                      draggable={false}
-                      className="h-full w-full object-contain p-3 transition-transform group-hover:scale-[1.03]"
-                    />
-                  </div>
-                </button>
-              ))}
-            </div>
-          </section>
+          {/* Bundled pages, and the credit for them — both only while there are
+              any. The registry globs src/linearts, so dropping the art back in
+              brings this section back with it. */}
+          {LINEARTS.length > 0 && (
+            <section className="space-y-2">
+              <div className="space-y-0.5">
+                {custom.length > 0 && (
+                  <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    Coloring pages
+                  </h3>
+                )}
+                <p className="text-xs text-muted-foreground">
+                  Coloring pages courtesy of{" "}
+                  <a
+                    href="https://yaycoloringpages.com"
+                    target="_blank"
+                    rel="noreferrer noopener"
+                    className="font-medium underline underline-offset-2 hover:text-foreground"
+                  >
+                    yaycoloringpages.com
+                  </a>
+                </p>
+              </div>
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-4">
+                {LINEARTS.map((art) => (
+                  <button
+                    key={art.id}
+                    type="button"
+                    onClick={() => pick(art.src, "free-form")}
+                    className="group overflow-hidden rounded-xl border bg-white shadow-sm transition hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-foreground focus-visible:ring-offset-2"
+                  >
+                    <div className="aspect-[3/4] w-full">
+                      <img
+                        src={art.src}
+                        alt={art.label}
+                        loading="lazy"
+                        draggable={false}
+                        className="h-full w-full object-contain p-3 transition-transform group-hover:scale-[1.03]"
+                      />
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </section>
+          )}
         </div>
       </div>
     </div>
