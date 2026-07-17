@@ -16,6 +16,7 @@ import {
   DEFAULT_SECTORS,
   DEFAULT_STROKE_WIDTH,
   getSymmetry,
+  isRoundCanvas,
   type Point,
   type Size,
   type SymParams,
@@ -249,7 +250,9 @@ export default function TemplateCreator() {
   // can fail — only claim success once it lands.
   async function save() {
     const canvas = canvasRef.current
-    const blob = canvas ? await lineCanvasToPngBlob(canvas) : null
+    const blob = canvas
+      ? await lineCanvasToPngBlob(canvas, { round: isRoundCanvas(mode) })
+      : null
     if (!blob) {
       toast({ message: "Draw something first", variant: "error" })
       return
@@ -306,7 +309,12 @@ export default function TemplateCreator() {
           className="flex min-h-0 flex-1 items-center justify-center p-4"
         >
           <div
-            className="relative overflow-hidden rounded-lg border bg-white shadow-sm"
+            className={cn(
+              "relative overflow-hidden border bg-white shadow-sm",
+              // Match the shape the template will be coloured on — and the shape
+              // it saves as — so corners can't be drawn into and silently lost.
+              isRoundCanvas(mode) ? "rounded-full" : "rounded-lg"
+            )}
             style={{ width: side || undefined, height: side || undefined }}
           >
             <canvas

@@ -1,6 +1,11 @@
 import type { DrawingMode } from "@/lib/drawings"
 import { LINEARTS_BUCKET, supabase } from "@/lib/supabase"
-import { DEFAULT_SECTORS, defaultParams, type SymParams } from "@/lib/symmetry"
+import {
+  DEFAULT_SECTORS,
+  clipToCircle,
+  defaultParams,
+  type SymParams,
+} from "@/lib/symmetry"
 
 // The shared template library: line art drawn in the template creator, by
 // anyone, colourable by everyone. Rows live in `public.linearts` and the PNGs in
@@ -227,11 +232,12 @@ function publicUrl(path: string): string {
 }
 
 // Downscale a (device-resolution) line-layer canvas and encode it as a
-// transparent PNG blob suitable for the library. Returns null when the canvas
-// has no ink (nothing drawn yet), so callers can decline to save.
+// transparent PNG blob suitable for the library. `round` clips it to the circle
+// the mode is drawn on (see isRoundCanvas). Returns null when the canvas has no
+// ink (nothing drawn yet), so callers can decline to save.
 export function lineCanvasToPngBlob(
   lineCanvas: HTMLCanvasElement,
-  max = 1000
+  { max = 1000, round = false }: { max?: number; round?: boolean } = {}
 ): Promise<Blob | null> {
   const w = lineCanvas.width
   const h = lineCanvas.height
@@ -241,6 +247,7 @@ export function lineCanvasToPngBlob(
   out.width = Math.max(1, Math.round(w * scale))
   out.height = Math.max(1, Math.round(h * scale))
   const ctx = out.getContext("2d")!
+  if (round) clipToCircle(ctx, out.width, out.height)
   ctx.drawImage(lineCanvas, 0, 0, out.width, out.height)
 
   const px = ctx.getImageData(0, 0, out.width, out.height).data

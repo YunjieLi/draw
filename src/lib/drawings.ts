@@ -1,4 +1,5 @@
 import { DRAWINGS_BUCKET, supabase } from "@/lib/supabase"
+import { clipToCircle, isRoundCanvas } from "@/lib/symmetry"
 
 export type DrawingMode = "free-form" | "mandala" | "tiles" | "mirror"
 
@@ -15,11 +16,19 @@ export type Drawing = {
 // Flatten the transparent drawing canvas onto a white background and encode a
 // PNG blob. The modes draw on a transparent canvas layered over a white div, so
 // exporting the canvas alone would lose the background.
-export function canvasToPngBlob(canvas: HTMLCanvasElement): Promise<Blob> {
+//
+// `round` exports the shape of the page rather than the canvas behind it: the
+// clip has to take in the white paper as well as the art, or the corners come
+// out white and the drawing is still a square — just an emptier one.
+export function canvasToPngBlob(
+  canvas: HTMLCanvasElement,
+  { round = false }: { round?: boolean } = {}
+): Promise<Blob> {
   const flat = document.createElement("canvas")
   flat.width = canvas.width
   flat.height = canvas.height
   const ctx = flat.getContext("2d")!
+  if (round) clipToCircle(ctx, flat.width, flat.height)
   ctx.fillStyle = "#ffffff"
   ctx.fillRect(0, 0, flat.width, flat.height)
   ctx.drawImage(canvas, 0, 0)
@@ -46,7 +55,7 @@ export async function saveDrawing(
         "(Authentication → Sign In / Providers) to allow saving."
     )
 
-  const blob = await canvasToPngBlob(canvas)
+  const blob = await canvasToPngBlob(canvas, { round: isRoundCanvas(mode) })
   const path = `${user.id}/${crypto.randomUUID()}.png`
 
   const { error: uploadError } = await supabase.storage

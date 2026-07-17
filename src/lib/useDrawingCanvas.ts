@@ -8,6 +8,7 @@ import { decodeTemplateImage } from "./templateImage"
 import {
   defaultParams,
   getSymmetry,
+  randomSectors,
   type Point,
   type Size,
   type SymParams,
@@ -45,8 +46,12 @@ export function useDrawingCanvas({ mode }: { mode: DrawingMode }) {
   // Boundary protection keeps colour strokes inside the lines; on by default.
   const [protect, setProtect] = useState(true)
   const protectRef = useRef(true)
-  // Symmetry settings — a loaded template's, otherwise the mode default.
-  const [params, setParams] = useState<SymParams>(defaultParams)
+  // Symmetry settings — a loaded template's, otherwise the mode default. A
+  // fresh mandala picks its sector count at random, so opening the page twice
+  // doesn't give the same shape both times.
+  const [params, setParams] = useState<SymParams>(() =>
+    mode === "mandala" ? { sectors: randomSectors() } : defaultParams()
+  )
   const [templateLoaded, setTemplateLoaded] = useState(false)
 
   colorRef.current = color
@@ -263,6 +268,9 @@ export function useDrawingCanvas({ mode }: { mode: DrawingMode }) {
     out.width = line.width
     out.height = line.height
     const ctx = out.getContext("2d")!
+    // Round modes aren't clipped here: canvasToPngBlob does it at encode time,
+    // where the white background is added — clipping only the art would leave
+    // white corners behind it.
     ctx.drawImage(color, 0, 0)
     ctx.drawImage(line, 0, 0)
     return out

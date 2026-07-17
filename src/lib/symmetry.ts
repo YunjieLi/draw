@@ -14,6 +14,30 @@ export type SymParams = { sectors: number }
 export const DEFAULT_SECTORS = 6
 export const TILE_GRID = 4
 
+// Sector counts a fresh mandala starts at. One is picked at random so a new page
+// isn't always the same shape; a loaded template overrides it with whatever it
+// was drawn at.
+export const SECTOR_CHOICES = [4, 5, 6, 8] as const
+export const randomSectors = (): number =>
+  SECTOR_CHOICES[Math.floor(Math.random() * SECTOR_CHOICES.length)]
+
+// Mandala is drawn on a round canvas; every other mode is square. The backing
+// canvas is square either way — CSS masks it to a circle — so anything outside
+// that circle is invisible on the page, and has to be clipped out of exports for
+// the saved image to match what was drawn.
+export const isRoundCanvas = (mode: DrawingMode): boolean => mode === "mandala"
+
+// Clip `ctx` to the largest circle that fits a w×h canvas.
+export function clipToCircle(
+  ctx: CanvasRenderingContext2D,
+  w: number,
+  h: number
+) {
+  ctx.beginPath()
+  ctx.arc(w / 2, h / 2, Math.min(w, h) / 2, 0, Math.PI * 2)
+  ctx.clip()
+}
+
 // Line-drawing brush widths (device-independent px) offered in the creator.
 export const STROKE_WIDTHS = [3, 5] as const
 export const DEFAULT_STROKE_WIDTH = 5
