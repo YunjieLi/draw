@@ -71,3 +71,70 @@ drop policy if exists "Anyone can read drawing files" on storage.objects;
 create policy "Anyone can read drawing files"
   on storage.objects for select
   using (bucket_id = 'drawings');
+
+-- 4. Metadata table for the shared template library: line art drawn in the
+-- template creator, which anyone can then colour in.
+create table if not exists public.linearts (
+  id           uuid primary key default gen_random_uuid(),
+  user_id      uuid not null references auth.users (id) on delete cascade,
+  -- The symmetry mode it was drawn in, and the settings to replicate strokes
+  -- the same way while colouring (only mandala reads `sectors` today).
+  mode         text not null check (mode in ('free-form', 'mandala', 'tiles', 'mirror')),
+  sectors      int not null default 6,
+  storage_path text not null,
+  created_at   timestamptz not null default now()
+);
+
+-- The library lists newest first, across every user.
+create index if not exists linearts_created_at_idx
+  on public.linearts (created_at desc);
+
+-- 5. Row Level Security: the library is public to read, owner-only to change.
+alter table public.linearts enable row level security;
+
+-- Shared library: anyone (including anonymous guests) can read every template,
+-- so line art drawn on one device is colourable by every visitor.
+drop policy if exists "Anyone can read linearts" on public.linearts;
+create policy "Anyone can read linearts"
+  on public.linearts for select
+  using (true);
+
+-- Insert/delete stay owner-only, so a visitor can only add or remove their own
+-- templates and cannot wipe the shared library.
+drop policy if exists "Users can insert own linearts" on public.linearts;
+create policy "Users can insert own linearts"
+  on public.linearts for insert
+  with check (auth.uid() = user_id);
+
+drop policy if exists "Users can delete own linearts" on public.linearts;
+create policy "Users can delete own linearts"
+  on public.linearts for delete
+  using (auth.uid() = user_id);
+
+-- 6. Storage bucket for the template PNGs (public read, owner-only write).
+insert into storage.buckets (id, name, public)
+values ('linearts', 'linearts', true)
+on conflict (id) do nothing;
+
+-- Same "<user_id>/<uuid>.png" layout as drawings: the first path segment must
+-- match the uploader.
+drop policy if exists "Users can upload own linearts" on storage.objects;
+create policy "Users can upload own linearts"
+  on storage.objects for insert
+  with check (
+    bucket_id = 'linearts'
+    and (storage.foldername(name))[1] = auth.uid()::text
+  );
+
+drop policy if exists "Users can delete own lineart files" on storage.objects;
+create policy "Users can delete own lineart files"
+  on storage.objects for delete
+  using (
+    bucket_id = 'linearts'
+    and (storage.foldername(name))[1] = auth.uid()::text
+  );
+
+drop policy if exists "Anyone can read lineart files" on storage.objects;
+create policy "Anyone can read lineart files"
+  on storage.objects for select
+  using (bucket_id = 'linearts');

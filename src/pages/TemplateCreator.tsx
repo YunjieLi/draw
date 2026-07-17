@@ -10,7 +10,7 @@ import {
 import { ModeGuides } from "@/components/ModeGuides"
 import { Button } from "@/components/ui/button"
 import { toast } from "@/components/ui/toast"
-import { lineCanvasToDataUrl, saveCustomLineArt } from "@/lib/customLinearts"
+import { lineCanvasToPngBlob, saveCustomLineArt } from "@/lib/customLinearts"
 import type { DrawingMode } from "@/lib/drawings"
 import {
   DEFAULT_SECTORS,
@@ -245,16 +245,22 @@ export default function TemplateCreator() {
     return false
   }
 
-  function save() {
+  // Saving publishes to the shared library, so it is a network round-trip that
+  // can fail — only claim success once it lands.
+  async function save() {
     const canvas = canvasRef.current
-    const src = canvas ? lineCanvasToDataUrl(canvas) : null
-    if (!src) {
+    const blob = canvas ? await lineCanvasToPngBlob(canvas) : null
+    if (!blob) {
       toast({ message: "Draw something first", variant: "error" })
       return
     }
-    saveCustomLineArt({ mode, params, src })
-    savedRef.current = true
-    toast({ message: "Saved to templates", variant: "success" })
+    try {
+      await saveCustomLineArt({ mode, params, blob })
+      savedRef.current = true
+      toast({ message: "Shared to templates", variant: "success" })
+    } catch {
+      toast({ message: "Couldn't share template — check your connection", variant: "error" })
+    }
   }
 
   function goBack() {

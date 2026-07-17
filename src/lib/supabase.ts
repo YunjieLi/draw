@@ -27,3 +27,6 @@ export const supabase = createClient(
 
 // Storage bucket that holds the rendered PNGs.
 export const DRAWINGS_BUCKET = "drawings"
+
+// Storage bucket that holds the shared library's template PNGs.
+export const LINEARTS_BUCKET = "linearts"
