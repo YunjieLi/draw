@@ -11,6 +11,7 @@ import {
   type DrawingMode,
 } from "@/lib/drawings"
 import { isSupabaseConfigured } from "@/lib/supabase"
+import { isRoundCanvas } from "@/lib/symmetry"
 import { cn } from "@/lib/utils"
 
 const MODE_LABELS: Record<DrawingMode, string> = {
@@ -159,7 +160,16 @@ export default function Gallery() {
           <div className="mx-auto grid max-w-5xl grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-5 lg:grid-cols-4">
             {visible.map((d) => (
               <Card key={d.id} className="group relative overflow-hidden">
-                <div className="aspect-square bg-white">
+                {/* Mandalas are round. Masking the tile covers both cases: it
+                    clips drawings saved as square PNGs before the export was
+                    fixed, and stops this white backing from filling the corners
+                    of the transparent ones saved since. */}
+                <div
+                  className={cn(
+                    "aspect-square bg-white",
+                    isRoundCanvas(d.mode) && "overflow-hidden rounded-full"
+                  )}
+                >
                   <img
                     src={d.url}
                     alt={MODE_LABELS[d.mode]}
