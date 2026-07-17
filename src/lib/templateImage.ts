@@ -1,12 +1,11 @@
 // Decode a template image for drawing onto a canvas.
 //
-// The bundled coloring pages are SVGs authored with only a `viewBox` and no
-// width/height. Chromium infers a size, but iOS/Safari refuses to rasterize
-// such an SVG via `drawImage` (it comes back 0×0 and paints nothing) — which is
-// why bundled templates failed to load on iPad. We work around it by fetching
-// the SVG, injecting explicit width/height from its viewBox, and loading that.
-// PNG data-URL templates (from the creator) already have intrinsic dimensions
-// and pass straight through.
+// SVG coloring pages authored with only a `viewBox` and no width/height are a
+// problem: Chromium infers a size, but iOS/Safari refuses to rasterize such an
+// SVG via `drawImage` (it comes back 0×0 and paints nothing) — which is why
+// bundled templates failed to load on iPad. We work around it by fetching the
+// SVG, injecting explicit width/height from its viewBox, and loading that. PNG
+// templates already have intrinsic dimensions and pass straight through.
 export async function decodeTemplateImage(
   src: string
 ): Promise<HTMLImageElement> {
@@ -28,6 +27,12 @@ export async function decodeTemplateImage(
 
   return new Promise((resolve, reject) => {
     const img = new Image()
+    // Shared templates come from Supabase storage — a different origin. Drawing
+    // one onto the line canvas would taint it, and the colored result could then
+    // never be exported via toBlob() on save. Requesting it CORS-anonymous keeps
+    // the canvas clean (the bucket answers with access-control-allow-origin: *).
+    // Harmless for same-origin and data:/blob: sources.
+    img.crossOrigin = "anonymous"
     img.onload = () => {
       if (objectUrl) URL.revokeObjectURL(objectUrl)
       resolve(img)

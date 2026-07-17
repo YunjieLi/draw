@@ -2,6 +2,8 @@ import { useEffect, useSyncExternalStore } from "react"
 import { Plus, Trash2, X } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
+import { toast } from "@/components/ui/toast"
+import { useAuth } from "@/lib/auth"
 import {
   deleteCustomLineArt,
   getCustomLineartsSnapshot,
@@ -21,6 +23,15 @@ export function TemplateModal({ onClose }: { onClose: () => void }) {
     subscribeCustomLinearts,
     getCustomLineartsSnapshot
   )
+  // Templates are everyone's to color but only their author's to delete, which
+  // is what the RLS policy enforces; this just hides a button that would fail.
+  const { user } = useAuth()
+
+  function remove(id: string) {
+    deleteCustomLineArt(id).catch(() =>
+      toast({ message: "Couldn't delete template", variant: "error" })
+    )
+  }
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose()
@@ -85,7 +96,7 @@ export function TemplateModal({ onClose }: { onClose: () => void }) {
           {custom.length > 0 && (
             <section className="space-y-2">
               <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                Your templates
+                Templates
               </h3>
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-4">
                 {custom.map((art) => (
@@ -111,14 +122,16 @@ export function TemplateModal({ onClose }: { onClose: () => void }) {
                     <span className="pointer-events-none absolute left-2 top-2 rounded-full bg-black/70 px-2 py-0.5 text-[10px] font-medium text-white">
                       {modeLabel(art.mode)}
                     </span>
-                    <button
-                      type="button"
-                      aria-label={`Delete ${art.label}`}
-                      onClick={() => deleteCustomLineArt(art.id)}
-                      className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full bg-white/90 text-muted-foreground opacity-0 shadow-sm transition hover:text-red-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-foreground group-hover:opacity-100"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
+                    {user?.id === art.userId && (
+                      <button
+                        type="button"
+                        aria-label={`Delete ${art.label}`}
+                        onClick={() => remove(art.id)}
+                        className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full bg-white/90 text-muted-foreground opacity-0 shadow-sm transition hover:text-red-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-foreground group-hover:opacity-100"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    )}
                   </div>
                 ))}
               </div>
