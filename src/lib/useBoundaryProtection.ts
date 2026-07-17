@@ -83,18 +83,20 @@ export function useBoundaryProtection({
     const sx = w / rect.width
     const sy = h / rect.height
     const union = new Uint8Array(w * h)
+    const frontier: number[] = []
     let any = false
     for (const [from] of replicas(start, start)) {
       const ix = Math.floor(from.x * sx)
       const iy = Math.floor(from.y * sy)
       if (ix < 0 || iy < 0 || ix >= w || iy >= h) continue
       const idx = iy * w + ix
-      if (floodInto(union, mask.data, w, h, idx, wrap)) any = true
+      if (floodInto(union, mask.data, w, h, idx, frontier, wrap)) any = true
     }
     if (!any) return false // every stamp seed sits on a line
 
-    const clipMask = bleedUnderLines(union, mask.data, w, h, EDGE_BLEED, wrap)
-    const clip = buildClipCanvas(clipMask, w, h)
+    // Widens `union` into the lines; it is the clip mask from here on.
+    bleedUnderLines(union, mask.data, w, h, EDGE_BLEED, frontier, wrap)
+    const clip = buildClipCanvas(union, w, h)
 
     const ctx = colorCtxRef.current
     if (!ctx) return false
