@@ -104,12 +104,18 @@ function neighbors(
 // mask, marking every reached pixel. Returns true if it filled anything (false
 // if `start` is a wall or was already covered by a prior flood). Use this to
 // union several seeds' regions without allocating and merging a mask per seed.
+//
+// Every reached pixel that touches a wall is appended to `frontier` — that is
+// exactly where bleedUnderLines starts from, and the flood already looks at
+// every neighbour of every region pixel, so collecting it here costs nothing
+// and saves the bleed a scan of the whole canvas to rediscover it.
 export function floodInto(
   union: Uint8Array,
   wall: Uint8Array,
   w: number,
   h: number,
   start: number,
+  frontier: number[],
   wrap = false
 ): boolean {
   if (wall[start] || union[start]) return false
@@ -118,53 +124,52 @@ export function floodInto(
   const nb = new Int32Array(4)
   union[start] = 1
   while (stack.length) {
-    neighbors(stack.pop()!, w, n, wrap, nb)
+    // Each pixel is stacked once (union marks it at push time), so it is popped
+    // once and lands in `frontier` at most once.
+    const i = stack.pop()!
+    neighbors(i, w, n, wrap, nb)
+    let touchesWall = false
     for (let k = 0; k < 4; k++) {
       const j = nb[k]
-      if (j >= 0 && !union[j] && !wall[j]) (union[j] = 1), stack.push(j)
+      if (j < 0) continue
+      if (wall[j]) touchesWall = true
+      else if (!union[j]) (union[j] = 1), stack.push(j)
     }
+    if (touchesWall) frontier.push(i)
   }
   return true
 }
 
-// Grow `region` outward by `bleed` pixels, but only across wall pixels — so
-// paint slides under the antialiased line edge yet can never reach the fillable
-// interior of an adjacent region. Returns the expanded mask.
+// Grow the flooded region outward by `bleed` pixels, but only across wall pixels
+// — so paint slides under the antialiased line edge yet can never reach the
+// fillable interior of an adjacent region. `frontier` is the region's
+// wall-touching edge, as collected by floodInto.
+//
+// Expands `union` in place: it only ever adds wall pixels, which the flood never
+// reaches, so there is nothing for this to trample.
 export function bleedUnderLines(
-  region: Uint8Array,
+  union: Uint8Array,
   wall: Uint8Array,
   w: number,
   h: number,
   bleed: number,
+  frontier: number[],
   wrap = false
-): Uint8Array {
+) {
   const n = w * h
-  const out = region.slice()
   const nb = new Int32Array(4)
-  let frontier: number[] = []
-  for (let i = 0; i < n; i++) {
-    if (!region[i]) continue
-    neighbors(i, w, n, wrap, nb)
-    for (let k = 0; k < 4; k++) {
-      const j = nb[k]
-      if (j >= 0 && wall[j]) {
-        frontier.push(i)
-        break
-      }
-    }
-  }
-  for (let step = 0; step < bleed && frontier.length; step++) {
+  let edge = frontier
+  for (let step = 0; step < bleed && edge.length; step++) {
     const next: number[] = []
-    for (const i of frontier) {
+    for (const i of edge) {
       neighbors(i, w, n, wrap, nb)
       for (let k = 0; k < 4; k++) {
         const j = nb[k]
-        if (j >= 0 && !out[j] && wall[j]) (out[j] = 1), next.push(j)
+        if (j >= 0 && !union[j] && wall[j]) (union[j] = 1), next.push(j)
       }
     }
-    frontier = next
+    edge = next
   }
-  return out
 }
 
 // A canvas that is opaque where `mask` is set and transparent elsewhere; use it
@@ -178,11 +183,10 @@ export function buildClipCanvas(
   clip.width = w
   clip.height = h
   const img = new ImageData(w, h)
-  const d = img.data
-  for (let i = 0; i < mask.length; i++)
-    if (mask[i]) {
-      d[i * 4] = d[i * 4 + 1] = d[i * 4 + 2] = d[i * 4 + 3] = 255
-    }
+  // Opaque white is 0xff in every channel, so a pixel is one 32-bit store
+  // rather than four byte stores — and being all-0xff, endianness is moot.
+  const px = new Uint32Array(img.data.buffer)
+  for (let i = 0; i < mask.length; i++) if (mask[i]) px[i] = 0xffffffff
   clip.getContext("2d")!.putImageData(img, 0, 0)
   return clip
 }
@@ -213,8 +217,16 @@ export function beginClippedStroke(
   // and clipped in isolation before being composited onto the color layer.
   const scratch = document.createElement("canvas")
   const sctx = scratch.getContext("2d")!
-  sctx.lineCap = "round"
-  sctx.lineJoin = "round"
+
+  // Round caps and joins are what make a stroke read as one smooth line rather
+  // than a segment's bare rectangle. Resizing a canvas resets its context to
+  // the defaults (butt/miter), so this has to be reapplied after every grow —
+  // not just once up front.
+  const shapeBrush = () => {
+    sctx.lineCap = "round"
+    sctx.lineJoin = "round"
+  }
+  shapeBrush()
 
   return {
     paint(stamp, bbox) {
@@ -226,8 +238,10 @@ export function beginClippedStroke(
       const bh = maxY - minY
       if (bw <= 0 || bh <= 0) return
 
-      if (scratch.width < bw) scratch.width = bw
-      if (scratch.height < bh) scratch.height = bh
+      let grew = false
+      if (scratch.width < bw) (scratch.width = bw), (grew = true)
+      if (scratch.height < bh) (scratch.height = bh), (grew = true)
+      if (grew) shapeBrush()
 
       // Draw the stamp(s), offset so device (minX,minY) maps to the scratch
       // origin, at the same dpr scale the mode draws with.
