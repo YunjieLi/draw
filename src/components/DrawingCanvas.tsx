@@ -9,6 +9,7 @@ import { ProtectionMenu } from "@/components/ProtectionMenu"
 import { SaveButton } from "@/components/SaveButton"
 import { TemplateModal } from "@/components/TemplateModal"
 import { Button } from "@/components/ui/button"
+import { isRoundCanvas } from "@/lib/symmetry"
 import type { DrawingCanvas as DrawingCanvasState } from "@/lib/useDrawingCanvas"
 import { cn } from "@/lib/utils"
 
@@ -23,7 +24,7 @@ type Props = {
 export function DrawingCanvas({ dc }: Props) {
   const [templatesOpen, setTemplatesOpen] = useState(false)
   const openTemplates = () => setTemplatesOpen(true)
-  const circle = dc.mode === "mandala"
+  const circle = isRoundCanvas(dc.mode)
 
   return (
     <div className="flex h-[100dvh] flex-col overflow-hidden bg-muted/30">
