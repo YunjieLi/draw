@@ -138,6 +138,12 @@ export function useDrawingCanvas({ mode }: { mode: DrawingMode }) {
     }
     ctx.drawImage(img, (w - dw) / 2, (h - dh) / 2, dw, dh)
     protection.invalidateWalls()
+    // Rebuild the wall mask now, while idle, so the first colour stroke doesn't
+    // stall on the readback (worst on retina iPad). Falls back to a timer where
+    // requestIdleCallback is unavailable (Safari).
+    const idle =
+      window.requestIdleCallback ?? ((cb: () => void) => setTimeout(cb, 200))
+    idle(() => protection.prewarmWalls())
   }
 
   // Decode a template image and adopt its symmetry settings. The

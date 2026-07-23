@@ -2,6 +2,7 @@ import { useRef, type MutableRefObject } from "react"
 
 import {
   EDGE_BLEED,
+  PROTECT_MAX_DIM,
   beginClippedStroke,
   bleedUnderLines,
   buildClipCanvas,
@@ -61,47 +62,72 @@ export function useBoundaryProtection({
     wallCache.current = null
   }
 
+  // The wall mask at capped resolution (PROTECT_MAX_DIM), cached and reused
+  // across strokes; rebuilt when the device canvas resizes. Reading it means a
+  // getImageData readback that stalls on retina hardware, so prewarmWalls pulls
+  // it off the pointer path onto template load — see there.
+  function ensureMask(lineCanvas: HTMLCanvasElement): WallMask | null {
+    const cached = wallCache.current
+    if (
+      cached &&
+      cached.srcW === lineCanvas.width &&
+      cached.srcH === lineCanvas.height
+    )
+      return cached
+    const mask = wallMaskFromCanvas(lineCanvas, PROTECT_MAX_DIM)
+    wallCache.current = mask
+    return mask
+  }
+
+  // Build the mask now (when idle after a template loads) so the first stroke
+  // doesn't pay the readback. A no-op if already cached or nothing is drawn.
+  function prewarmWalls() {
+    const lineCanvas = lineCanvasRef.current
+    if (lineCanvas && lineCanvas.width > 0) ensureMask(lineCanvas)
+  }
+
   function begin(start: Point): boolean {
     const colorCanvas = colorCanvasRef.current
     const lineCanvas = lineCanvasRef.current
     if (!colorCanvas || !lineCanvas) return false
     const w = colorCanvas.width
-    const h = colorCanvas.height
     const rect = colorCanvas.getBoundingClientRect()
     if (rect.width === 0 || rect.height === 0) return false
 
-    let mask = wallCache.current
-    if (!mask || mask.w !== lineCanvas.width || mask.h !== lineCanvas.height) {
-      mask = wallMaskFromCanvas(lineCanvas)
-      wallCache.current = mask
-    }
+    // Everything below works in mask space; only the final compositing is at
+    // device resolution.
+    const mask = ensureMask(lineCanvas)
     if (!mask || !mask.hasWall) return false // nothing drawn to stay inside of
+    const mw = mask.w
+    const mh = mask.h
 
     // Union the regions of every place this stroke's stamps will land. A
     // replica that starts off-canvas has no pixel to flood from; on a torus its
-    // region is reached anyway, from across the seam.
-    const sx = w / rect.width
-    const sy = h / rect.height
-    const union = new Uint8Array(w * h)
+    // region is reached anyway, from across the seam. Seeds are CSS points
+    // mapped into mask space.
+    const sx = mw / rect.width
+    const sy = mh / rect.height
+    const union = new Uint8Array(mw * mh)
     const frontier: number[] = []
     let any = false
     for (const [from] of replicas(start, start)) {
       const ix = Math.floor(from.x * sx)
       const iy = Math.floor(from.y * sy)
-      if (ix < 0 || iy < 0 || ix >= w || iy >= h) continue
-      const idx = iy * w + ix
-      if (floodInto(union, mask.data, w, h, idx, frontier, wrap)) any = true
+      if (ix < 0 || iy < 0 || ix >= mw || iy >= mh) continue
+      const idx = iy * mw + ix
+      if (floodInto(union, mask.data, mw, mh, idx, frontier, wrap)) any = true
     }
     if (!any) return false // every stamp seed sits on a line
 
     // Widens `union` into the lines; it is the clip mask from here on.
-    bleedUnderLines(union, mask.data, w, h, EDGE_BLEED, frontier, wrap)
-    const clip = buildClipCanvas(union, w, h)
+    bleedUnderLines(union, mask.data, mw, mh, EDGE_BLEED, frontier, wrap)
+    const clip = buildClipCanvas(union, mw, mh)
 
     const ctx = colorCtxRef.current
     if (!ctx) return false
     const dpr = window.devicePixelRatio || 1
-    active.current = beginClippedStroke(ctx, clip, dpr)
+    // clipScale maps a device pixel to the capped clip (mw / device w).
+    active.current = beginClippedStroke(ctx, clip, dpr, mw / w)
     return true
   }
 
@@ -150,5 +176,5 @@ export function useBoundaryProtection({
     return active.current !== null
   }
 
-  return { begin, draw, end, isActive, invalidateWalls }
+  return { begin, draw, end, isActive, invalidateWalls, prewarmWalls }
 }

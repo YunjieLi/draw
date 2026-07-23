@@ -7,26 +7,60 @@
 // edges stay continuous across even thin lines.
 export const WALL_ALPHA = 60
 
-// A protected stroke bleeds this many device pixels *under* the line edges,
+// A protected stroke bleeds this many *mask* pixels under the line edges,
 // expanding only across wall pixels, so no white slivers are left uncoloured
 // along the lines. Kept small so it can't bridge a thin line.
 export const EDGE_BLEED = 3
 
+// The region computation (mask read, flood, bleed, clip) runs at this resolution
+// cap rather than the retina device resolution, then the clip is scaled back up
+// when compositing. Templates are saved at <=1000px and the colour brush is
+// chunky, so there is no wall detail beyond this to preserve — but on a 2x/3x
+// canvas it is 4-9x fewer pixels through every per-stroke pass, which is what
+// made coloring a loaded template lag on iPad. Verified on real templates: walls
+// still seal at this resolution (no region leaks across a line).
+export const PROTECT_MAX_DIM = 1024
+
 export type WallMask = {
-  w: number
+  w: number // mask resolution (capped), what flood/bleed/clip run at
   h: number
+  srcW: number // the source canvas size the mask was derived from
+  srcH: number
   data: Uint8Array // 1 = wall (line), 0 = paintable
   hasWall: boolean
 }
 
-// Build a wall mask from a canvas' own pixels (e.g. a user-drawn line layer).
-export function wallMaskFromCanvas(canvas: HTMLCanvasElement): WallMask | null {
-  const w = canvas.width
-  const h = canvas.height
-  if (w === 0 || h === 0) return null
-  const ctx = canvas.getContext("2d")
-  if (!ctx) return null
-  const px = ctx.getImageData(0, 0, w, h).data
+// Build a wall mask from a canvas' own pixels (e.g. a loaded template layer),
+// downscaled so its longest side is at most `maxDim`. Downscaling averages a
+// line's coverage into the alpha, and WALL_ALPHA is low enough that the softened
+// edges still read as wall — so regions stay sealed while the mask (and every
+// pass over it) shrinks with the square of the scale.
+export function wallMaskFromCanvas(
+  canvas: HTMLCanvasElement,
+  maxDim = Infinity
+): WallMask | null {
+  const srcW = canvas.width
+  const srcH = canvas.height
+  if (srcW === 0 || srcH === 0) return null
+  const scale = Math.min(1, maxDim / Math.max(srcW, srcH))
+  const w = Math.max(1, Math.round(srcW * scale))
+  const h = Math.max(1, Math.round(srcH * scale))
+
+  let px: Uint8ClampedArray
+  if (scale === 1) {
+    const ctx = canvas.getContext("2d")
+    if (!ctx) return null
+    px = ctx.getImageData(0, 0, w, h).data
+  } else {
+    const off = document.createElement("canvas")
+    off.width = w
+    off.height = h
+    const octx = off.getContext("2d")
+    if (!octx) return null
+    octx.drawImage(canvas, 0, 0, w, h)
+    px = octx.getImageData(0, 0, w, h).data
+  }
+
   const data = new Uint8Array(w * h)
   let hasWall = false
   for (let i = 0; i < data.length; i++)
@@ -34,7 +68,7 @@ export function wallMaskFromCanvas(canvas: HTMLCanvasElement): WallMask | null {
       data[i] = 1
       hasWall = true
     }
-  return { w, h, data, hasWall }
+  return { w, h, srcW, srcH, data, hasWall }
 }
 
 // The four orthogonal neighbours of pixel `i`, written into `out` as indices,
@@ -158,8 +192,10 @@ export type Bbox = { minX: number; minY: number; maxX: number; maxY: number }
 // the brush movement — not with the (retina-sized) canvas.
 //
 // `clip` is opaque inside the region and transparent outside; `dpr` matches the
-// color context's transform. Strokes must be opaque (solid colors), since each
-// stamp is painted straight onto the color layer rather than accumulated.
+// color context's transform. `clipScale` maps a device pixel to the clip's own
+// (capped) resolution — 1 when the clip is device-sized. Strokes must be opaque
+// (solid colors), since each stamp is painted straight onto the color layer
+// rather than accumulated.
 export type ClippedStroke = {
   // `stamp` draws the segment(s) in CSS coordinates onto the provided context
   // (the mode's usual stampOn). `bbox` is the device-pixel region they cover.
@@ -169,8 +205,13 @@ export type ClippedStroke = {
 export function beginClippedStroke(
   colorCtx: CanvasRenderingContext2D,
   clip: HTMLCanvasElement,
-  dpr: number
+  dpr: number,
+  clipScale = 1
 ): ClippedStroke {
+  // The color layer is device-sized; the clip may be smaller (see clipScale).
+  const deviceW = colorCtx.canvas.width
+  const deviceH = colorCtx.canvas.height
+
   // A scratch layer, grown to the largest bbox seen, where each stamp is drawn
   // and clipped in isolation before being composited onto the color layer.
   const scratch = document.createElement("canvas")
@@ -190,8 +231,8 @@ export function beginClippedStroke(
     paint(stamp, bbox) {
       const minX = Math.max(0, Math.floor(bbox.minX))
       const minY = Math.max(0, Math.floor(bbox.minY))
-      const maxX = Math.min(clip.width, Math.ceil(bbox.maxX))
-      const maxY = Math.min(clip.height, Math.ceil(bbox.maxY))
+      const maxX = Math.min(deviceW, Math.ceil(bbox.maxX))
+      const maxY = Math.min(deviceH, Math.ceil(bbox.maxY))
       const bw = maxX - minX
       const bh = maxY - minY
       if (bw <= 0 || bh <= 0) return
@@ -209,9 +250,22 @@ export function beginClippedStroke(
       stamp(sctx)
 
       // Clip to the region: keep scratch pixels only where the region is opaque.
+      // The clip is at its own resolution, so sample the matching sub-rect
+      // (clipScale maps device px -> clip px) and let drawImage scale it up to
+      // the device-sized scratch — its soft edge stays within EDGE_BLEED.
       sctx.setTransform(1, 0, 0, 1, 0, 0)
       sctx.globalCompositeOperation = "destination-in"
-      sctx.drawImage(clip, minX, minY, bw, bh, 0, 0, bw, bh)
+      sctx.drawImage(
+        clip,
+        minX * clipScale,
+        minY * clipScale,
+        bw * clipScale,
+        bh * clipScale,
+        0,
+        0,
+        bw,
+        bh
+      )
       sctx.globalCompositeOperation = "source-over"
 
       // Composite just this stamp's box onto the color layer.
